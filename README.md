@@ -22,7 +22,7 @@ This project implements a comprehensive DevSecOps pipeline for a Java applicatio
 ## DevSecOps Pipeline Stages
 
 ### 1. Code Analysis (SAST & CSA)
-- **AWS CodeGuru Reviewer** - SAST for code quality and security
+- **AWS Security Inspector Reviewer** - SAST for code quality and security
 - **Amazon CodeWhisperer** - Code security analysis
 - **AWS Secrets Manager Scanner** - Secret detection
 - **Lambda Function** - Send findings to Security Hub (ASFF format)

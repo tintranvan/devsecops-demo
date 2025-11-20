@@ -1,17 +1,20 @@
 #!/bin/bash
 
-# Check Security Findings for project
+# Check ACTIVE Security Findings for project
 # Usage: ./check-findings.sh [profile] [region]
 
 PROFILE=${1:-esoftvn-researching}
 REGION=${2:-us-east-1}
 
-echo "🔍 Checking security findings..."
+echo "🔍 AWS Inspector Code Security Analysis"
+echo "📂 Project: tintranvan/devsecops-demo:main"
+echo "════════════════════════════════════════════════════════════"
 
-# Get all findings
+# Get only ACTIVE CODE_VULNERABILITY findings
 FINDINGS=$(aws inspector2 list-findings \
     --profile $PROFILE \
     --region $REGION \
+    --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
     --output json 2>/dev/null || echo '{"findings":[]}')
 
 # Count by severity
@@ -21,32 +24,60 @@ MEDIUM=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "MEDIUM")] | 
 LOW=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "LOW")] | length')
 TOTAL=$(echo "$FINDINGS" | jq '.findings | length')
 
-# Display table
+# Display beautiful table
 echo ""
-echo "╔═══════════════════════════════╗"
-echo "║    SECURITY FINDINGS SUMMARY  ║"
-echo "╠═══════════════════════════════╣"
-printf "║ %-10s │ %-6s │ %-8s ║\n" "SEVERITY" "COUNT" "STATUS"
-echo "╠═══════════════════════════════╣"
-printf "║ %-10s │ %-6s │ %-8s ║\n" "💀 CRITICAL" "$CRITICAL" "$([ $CRITICAL -gt 0 ] && echo "🚨 FIX" || echo "✅ OK")"
-printf "║ %-10s │ %-6s │ %-8s ║\n" "🚨 HIGH" "$HIGH" "$([ $HIGH -gt 0 ] && echo "⚠️  FIX" || echo "✅ OK")"
-printf "║ %-10s │ %-6s │ %-8s ║\n" "⚠️  MEDIUM" "$MEDIUM" "$([ $MEDIUM -gt 0 ] && echo "📝 CHECK" || echo "✅ OK")"
-printf "║ %-10s │ %-6s │ %-8s ║\n" "📝 LOW" "$LOW" "$([ $LOW -gt 0 ] && echo "ℹ️  INFO" || echo "✅ OK")"
-echo "╠═══════════════════════════════╣"
-printf "║ %-10s │ %-6s │ %-8s ║\n" "🔢 TOTAL" "$TOTAL" "$([ $TOTAL -gt 0 ] && echo "📊 FOUND" || echo "✅ CLEAN")"
-echo "╚═══════════════════════════════╝"
+echo "┌─────────────────────────────────────────────────────────┐"
+echo "│                 🛡️  SECURITY FINDINGS                   │"
+echo "├─────────────────┬───────────┬───────────────────────────┤"
+echo "│    SEVERITY     │   COUNT   │          STATUS           │"
+echo "├─────────────────┼───────────┼───────────────────────────┤"
+printf "│ %-15s │ %-9s │ %-25s │\n" "💀 CRITICAL" "$CRITICAL" "$([ $CRITICAL -gt 0 ] && echo "🚨 IMMEDIATE ACTION" || echo "✅ SECURE")"
+printf "│ %-15s │ %-9s │ %-25s │\n" "🚨 HIGH" "$HIGH" "$([ $HIGH -gt 0 ] && echo "⚠️  NEEDS FIXING" || echo "✅ SECURE")"
+printf "│ %-15s │ %-9s │ %-25s │\n" "⚠️  MEDIUM" "$MEDIUM" "$([ $MEDIUM -gt 0 ] && echo "📝 REVIEW REQUIRED" || echo "✅ SECURE")"
+printf "│ %-15s │ %-9s │ %-25s │\n" "📝 LOW" "$LOW" "$([ $LOW -gt 0 ] && echo "ℹ️  INFORMATIONAL" || echo "✅ SECURE")"
+echo "├─────────────────┼───────────┼───────────────────────────┤"
+printf "│ %-15s │ %-9s │ %-25s │\n" "🔢 TOTAL ACTIVE" "$TOTAL" "$([ $TOTAL -gt 0 ] && echo "📊 FINDINGS DETECTED" || echo "✅ ALL CLEAR")"
+echo "└─────────────────┴───────────┴───────────────────────────┘"
 
 # Show HIGH findings details
 if [ "$HIGH" -gt 0 ]; then
     echo ""
-    echo "🚨 HIGH SEVERITY FINDINGS:"
-    echo "────────────────────────────────────────"
+    echo "🚨 HIGH SEVERITY FINDINGS DETAILS:"
+    echo "────────────────────────────────────────────────────────────"
     echo "$FINDINGS" | jq -r '.findings[] | select(.severity == "HIGH") | 
     "• \(.title // "No title")
-  File: \(.codeVulnerabilityDetails.filePath.filePath // .packageVulnerabilityDetails.vulnerablePackages[0].filePath // "Unknown")
-  Type: \(.type // "Unknown")
-  Status: \(.status // "Unknown")"'
+  📁 File: \(.codeVulnerabilityDetails.filePath.filePath // "Unknown")
+  📍 Line: \(.codeVulnerabilityDetails.filePath.startLine // "N/A")-\(.codeVulnerabilityDetails.filePath.endLine // "N/A")
+  🔍 Type: \(.type // "Unknown")
+  🏷️  Tags: \(.codeVulnerabilityDetails.detectorTags // [] | join(", "))"'
 fi
 
+# Show MEDIUM findings details
+if [ "$MEDIUM" -gt 0 ]; then
+    echo ""
+    echo "⚠️ MEDIUM SEVERITY FINDINGS DETAILS:"
+    echo "────────────────────────────────────────────────────────────"
+    echo "$FINDINGS" | jq -r '.findings[] | select(.severity == "MEDIUM") | 
+    "• \(.title // "No title")
+  📁 File: \(.codeVulnerabilityDetails.filePath.filePath // "Unknown")
+  📍 Line: \(.codeVulnerabilityDetails.filePath.startLine // "N/A")-\(.codeVulnerabilityDetails.filePath.endLine // "N/A")
+  🔍 Type: \(.type // "Unknown")
+  🏷️  Tags: \(.codeVulnerabilityDetails.detectorTags // [] | join(", "))"'
+fi
+
+# Summary
 echo ""
-echo "📊 Summary: $TOTAL total findings ($CRITICAL critical, $HIGH high severity)"
+echo "📊 SUMMARY:"
+echo "• Active Code Vulnerabilities: $TOTAL total"
+echo "• Critical Issues: $CRITICAL"
+echo "• High Priority: $HIGH"
+if [ "$CRITICAL" -eq 0 ] && [ "$HIGH" -eq 0 ]; then
+    echo "• 🎉 Status: All critical and high severity code vulnerabilities resolved!"
+elif [ "$CRITICAL" -eq 0 ]; then
+    echo "• ✅ No critical vulnerabilities"
+    echo "• 🚨 Action Required: Fix $HIGH high severity code vulnerabilities"
+else
+    echo "• 💀 URGENT: $CRITICAL critical vulnerabilities need immediate attention"
+    echo "• 🚨 Also Fix: $HIGH high severity code vulnerabilities"
+fi
+echo "════════════════════════════════════════════════════════════"
