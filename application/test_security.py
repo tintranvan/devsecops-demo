@@ -18,3 +18,8 @@ if __name__ == "__main__":
     # Test the vulnerable functions
     print(unsafe_command("test"))
     print(unsafe_sql("1"))
+
+# Hard-coded credentials (security issue)
+API_KEY = 'sk-1234567890abcdef'
+DATABASE_PASSWORD = 'admin123'
+
