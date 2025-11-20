@@ -1,0 +1,155 @@
+name: demo-app
+type: api
+deployment: ecs
+stage: latest
+infra_tag: main
+
+# Base configuration
+resources:
+  memory: 512
+  cpu: 256
+  desired_count: 1
+  max_count: 10
+
+# Deployment configuration
+deployment:
+  strategy: rolling_update
+  minimum_healthy_percent: 50
+  maximum_percent: 200
+  health_check_grace_period: 60s
+
+# Auto-scaling configuration
+scaling:
+  metrics:
+    - name: cpu_utilization
+      target_value: 70
+      action: scale_up_down
+      cooldown_up: 60s
+      cooldown_down: 300s
+      
+    - name: memory_utilization
+      target_value: 80
+      action: scale_up_only
+      cooldown_up: 30s
+
+# ALB Integration
+load_balancer:
+  target_group_arn: ${ALB_TARGET_GROUP_ARN}
+  container_port: 8080
+  health_check_path: /health
+  domain_name: dev-service-01.editforreal.com
+  priority: 300
+
+# Environment Variables
+environment_variables:
+  LOG_LEVEL: info
+  SPRING_PROFILES_ACTIVE: dev
+
+# Secret Variables (will create secrets and inject into container)
+secret_variables:
+  - TOKEN_SECRET
+
+# Environment-specific overrides
+environments:
+  dev:
+    resources:
+      desired_count: 1
+      max_count: 3
+    scaling:
+      metrics:
+        - name: cpu_utilization
+          target_value: 80
+        - name: memory_utilization
+          target_value: 90
+    environment_variables:
+      LOG_LEVEL: debug
+      SPRING_PROFILES_ACTIVE: dev
+    
+  staging:
+    resources:
+      desired_count: 2
+      max_count: 5
+    environment_variables:
+      LOG_LEVEL: info
+      SPRING_PROFILES_ACTIVE: staging
+    
+  prod:
+    resources:
+      memory: 1024
+      cpu: 512
+      desired_count: 3
+      max_count: 20
+    scaling:
+      metrics:
+        - name: cpu_utilization
+          target_value: 60
+        - name: memory_utilization
+          target_value: 70
+    environment_variables:
+      LOG_LEVEL: warn
+      SPRING_PROFILES_ACTIVE: prod
+
+  secret_variables:
+    - TOKEN_SECRET
+
+# AWS Services Integration
+aws_services:
+  rds:
+    cluster_identifier: ${RDS_CLUSTER_IDENTIFIER}
+    database_name: ${DB_NAME}
+    username: app_user
+    iam_auth: true
+  
+  sqs:
+    queue_url: ${SQS_QUEUE_URL}
+  
+
+# IAM Permissions
+iam_permissions:
+  - service: rds-db
+    actions:
+      - connect
+    resources:
+      - ${RDS_CLUSTER_ARN}/app_user
+  
+  - service: sqs
+    actions:
+      - SendMessage
+      - ReceiveMessage
+      - DeleteMessage
+      - GetQueueAttributes
+    resources:
+      - ${SQS_QUEUE_ARN}
+  
+  - service: secretsmanager
+    actions:
+      - GetSecretValue
+    resources:
+      - ${DB_SECRET_ARN}
+  
+  - service: logs
+    actions:
+      - CreateLogGroup
+      - CreateLogStream
+      - PutLogEvents
+    resources:
+      - "*"
+
+# Security
+security:
+  vpc_id: ${VPC_ID}
+  private_subnet_ids: ${PRIVATE_SUBNET_IDS}
+  security_groups:
+    - ${ALB_SECURITY_GROUP_ID}
+
+# Monitoring
+monitoring:
+  cloudwatch_logs:
+    log_group: /aws/ecs/service/${name}
+    retention_days: 30
+  
+  metrics:
+    namespace: DevSecOps/JavaApp
+    dimensions:
+      - Service: ${name}
+      - Environment: ${environment}

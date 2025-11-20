@@ -1,0 +1,33 @@
+# Terraform
+**/.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+#*.tfvars
+*.tfvars.json
+*.tfplan
+*-plan-*
+tfplan-*
+destroy-plan-*
+
+# Terraform modules (generated)
+application/infrastructure/main.tf
+application/infrastructure/variables.tf
+application/infrastructure/outputs.tf
+
+# Temporary build files
+application/pip.conf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+terraform/environement/**/**

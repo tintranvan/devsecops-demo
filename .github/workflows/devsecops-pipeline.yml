@@ -1,0 +1,436 @@
+name: DevSecOps CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: devsecops-java-app
+  JAVA_VERSION: '17'
+
+jobs:
+  # Stage 1: Security Code Analysis (SAST & CSA)
+  security-analysis:
+    name: Security Code Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      security-events: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better analysis
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # Secret Detection with GitLeaks
+    - name: Run GitLeaks Secret Detection
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+    # SAST with CodeQL
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: java
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'corretto'
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+
+    - name: Build application for CodeQL
+      working-directory: ./application
+      run: mvn compile -DskipTests
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+    # OWASP Dependency Check
+    - name: Run OWASP Dependency Check
+      working-directory: ./application
+      run: |
+        mvn org.owasp:dependency-check-maven:check
+        
+    - name: Upload OWASP Report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: owasp-dependency-check-report
+        path: application/target/dependency-check-report.*
+
+    # SpotBugs Static Analysis
+    - name: Run SpotBugs Analysis
+      working-directory: ./application
+      run: mvn spotbugs:check
+
+    # Send Security Findings to AWS Security Hub
+    - name: Process Security Findings
+      if: always()
+      run: |
+        python3 scripts/process-security-findings.py \
+          --github-token ${{ secrets.GITHUB_TOKEN }} \
+          --aws-region ${{ env.AWS_REGION }} \
+          --repository ${{ github.repository }} \
+          --commit-sha ${{ github.sha }}
+
+  # Stage 2: Build & Image Security
+  build-and-scan:
+    name: Build & Image Security Scan
+    runs-on: ubuntu-latest
+    needs: security-analysis
+    permissions:
+      id-token: write
+      contents: read
+    
+    outputs:
+      image-uri: ${{ steps.build-image.outputs.image }}
+      image-digest: ${{ steps.build-image.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'corretto'
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+
+    # Validate dependencies against approved sources
+    - name: Validate Dependencies
+      working-directory: ./application
+      run: |
+        python3 ../scripts/validate-dependencies.py pom.xml
+
+    - name: Build application
+      working-directory: ./application
+      run: |
+        mvn clean package -DskipTests
+        
+    # Generate SBOM
+    - name: Generate SBOM
+      working-directory: ./application
+      run: |
+        mvn org.cyclonedx:cyclonedx-maven-plugin:makeAggregateBom
+        
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom
+        path: application/target/bom.json
+
+    # Build Docker image
+    - name: Build Docker image
+      id: build-image
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        # Build image with VPC endpoint support
+        docker build \
+          --build-arg AWS_REGION=${{ env.AWS_REGION }} \
+          -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+          ./application
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    # Scan image with Trivy before push
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.build-image.outputs.image }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    # Push image to ECR
+    - name: Push image to ECR
+      env:
+        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        
+    # Wait for ECR Inspector scan
+    - name: Wait for ECR Inspector scan
+      run: |
+        python3 scripts/wait-for-ecr-scan.py \
+          --repository $ECR_REPOSITORY \
+          --image-tag ${{ github.sha }} \
+          --region ${{ env.AWS_REGION }}
+
+    # Sign image with AWS Signer
+    - name: Sign container image
+      run: |
+        aws signer sign-payload \
+          --profile-name ${{ secrets.SIGNER_PROFILE_NAME }} \
+          --payload ${{ steps.build-image.outputs.image }} \
+          --payload-format json
+
+  # Stage 3: Continuous Testing
+  testing:
+    name: Continuous Testing
+    runs-on: ubuntu-latest
+    needs: build-and-scan
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'corretto'
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.m2
+        key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+
+    # Unit Tests
+    - name: Run Unit Tests
+      working-directory: ./application
+      run: mvn test
+
+    # Integration Tests with Testcontainers
+    - name: Run Integration Tests
+      working-directory: ./application
+      env:
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_NAME: testdb
+        DB_USERNAME: postgres
+        DB_PASSWORD: postgres
+      run: mvn verify -Dspring.profiles.active=test
+
+    # Performance Tests with JMeter
+    - name: Run Performance Tests
+      run: |
+        # Start application in background
+        java -jar application/target/*.jar --server.port=8080 &
+        APP_PID=$!
+        
+        # Wait for app to start
+        sleep 30
+        
+        # Run JMeter tests
+        jmeter -n -t tests/performance/load-test.jmx -l results.jtl
+        
+        # Stop application
+        kill $APP_PID
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: |
+          application/target/surefire-reports/
+          application/target/failsafe-reports/
+          results.jtl
+
+  # Stage 4: Deploy to Development
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [build-and-scan, testing]
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    environment: development
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Deploy to ECS
+      run: |
+        python3 scripts/deploy-ecs.py \
+          --environment dev \
+          --image-uri ${{ needs.build-and-scan.outputs.image-uri }} \
+          --cluster devsecops-dev-cluster
+
+    # DAST Scan after deployment
+    - name: Run DAST Scan
+      run: |
+        python3 scripts/run-dast-scan.py \
+          --target-url https://dev-sample-app.example.com \
+          --environment dev
+
+  # Stage 5: Deploy to Staging (with security validation)
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-and-scan, testing, deploy-dev]
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # Validate no critical security findings
+    - name: Security Gate Check
+      run: |
+        python3 scripts/security-gate-check.py \
+          --image-uri ${{ needs.build-and-scan.outputs.image-uri }} \
+          --severity-threshold HIGH
+
+    - name: Deploy to ECS
+      run: |
+        python3 scripts/deploy-ecs.py \
+          --environment staging \
+          --image-uri ${{ needs.build-and-scan.outputs.image-uri }} \
+          --cluster devsecops-staging-cluster
+
+    - name: Run DAST Scan
+      run: |
+        python3 scripts/run-dast-scan.py \
+          --target-url https://staging-sample-app.example.com \
+          --environment staging
+
+  # Stage 6: Deploy to Production (clean image promotion only)
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-and-scan, testing, deploy-staging]
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    # Final security validation
+    - name: Production Security Gate
+      run: |
+        python3 scripts/production-security-gate.py \
+          --image-uri ${{ needs.build-and-scan.outputs.image-uri }}
+
+    # Promote clean image from staging
+    - name: Promote Image to Production
+      run: |
+        python3 scripts/promote-image.py \
+          --source-tag staging-${{ github.sha }} \
+          --target-tag prod-${{ github.sha }} \
+          --repository $ECR_REPOSITORY
+
+    - name: Deploy to ECS
+      run: |
+        python3 scripts/deploy-ecs.py \
+          --environment prod \
+          --image-uri ${{ needs.build-and-scan.outputs.image-uri }} \
+          --cluster devsecops-prod-cluster
+
+  # Generate Security Report
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [security-analysis, build-and-scan, testing]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+
+    - name: Generate Security Report
+      run: |
+        python3 scripts/generate-security-report.py \
+          --output-format json \
+          --output-file security-report.json
+
+    - name: Upload Security Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-report
+        path: security-report.json
+
+    - name: Send to Security Hub
+      run: |
+        python3 scripts/send-to-security-hub.py \
+          --report-file security-report.json

@@ -1,0 +1,17 @@
+FROM amazoncorretto:17-alpine
+
+# Install netcat for simple HTTP server
+RUN apk add --no-cache netcat-openbsd
+
+# Create simple health endpoint script with debug logging
+RUN echo '#!/bin/sh' > /app.sh && \
+    echo 'echo "=== DEBUG: Environment Variables ===" ' >> /app.sh && \
+    echo 'echo "TOKEN_SECRET: $TOKEN_SECRET"' >> /app.sh && \
+    echo 'echo "====================================" ' >> /app.sh && \
+    echo 'while true; do' >> /app.sh && \
+    echo '  echo -e "HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\nContent-Length: 97\\r\\n\\r\\n{\\\"status\\\":\\\"healthy\\\",\\\"service\\\":\\\"java-app\\\",\\\"timestamp\\\":\\\"$(date)\\\"}" | nc -l -p 8080 -q 1' >> /app.sh && \
+    echo 'done' >> /app.sh && \
+    chmod +x /app.sh
+
+EXPOSE 8080
+CMD ["/app.sh"]

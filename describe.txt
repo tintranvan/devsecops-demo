@@ -1,0 +1,114 @@
+## 🏗️ Kiến trúc tổng quan
+
+### **1. Infrastructure Core (Terraform)**
+• **VPC Module**: Private/public subnets, NAT Gateway, VPC Endpoints
+• **ECS Fargate**: Container orchestration với IAM roles
+• **ALB**: Application Load Balancer với SSL
+• **RDS**: PostgreSQL database
+• **SQS**: Message queue
+• **Security Hub**: Centralized security findings
+• **ECR**: Container registry với image scanning
+
+### **2. Java Application Mock**
+• **Spring Boot**: REST API với health checks
+• **AWS SDK v2**: SQS và RDS integration với IAM roles
+• **Security**: Non-root user, security headers
+• **Observability**: CloudWatch metrics, structured logging
+
+### **3. DevSecOps Pipeline (GitHub Actions)**
+
+#### **Stage 1: Code Analysis (SAST & CSA)**
+• ✅ CodeQL: SAST analysis
+• ✅ GitLeaks: Secret detection
+• ✅ OWASP Dependency Check: Vulnerability scanning
+• ✅ SpotBugs: Static analysis
+• ✅ Lambda Integration: Send findings to Security Hub (ASFF format)
+
+#### **Stage 2: Build & Image Security**
+• ✅ AWS-only dependencies: Validation against external sources
+• ✅ SBOM Generation: Software Bill of Materials
+• ✅ Trivy Scanning: Container vulnerability scan
+• ✅ ECR Inspector: Pre-push image scanning
+• ✅ AWS Signer: Image signing
+
+#### **Stage 3: Continuous Testing**
+• ✅ Unit Tests: JUnit
+• ✅ Integration Tests: Testcontainers
+• ✅ Performance Tests: JMeter
+
+#### **Stage 4: Deployment Strategy**
+Dev → Staging → Production
+ ↓       ↓          ↓
+Allow   Fix all   Clean image
+warnings issues   promotion only
+
+
+#### **Stage 5: Runtime Security**
+• ✅ DAST: Dynamic application security testing
+• ✅ AWS Inspector: Runtime vulnerability assessment
+• ✅ Security Hub: Centralized findings management
+
+## 🔒 Security Features
+
+### **Security-First Approach**
+• All findings centralized in AWS Security Hub
+• **ASFF compliance** for standardized reporting
+• **Zero-trust** network architecture
+• **Least privilege** IAM policies
+
+### **Multi-layered Security**
+1. Code Level: SAST, secret detection
+2. Dependency Level: Vulnerability scanning
+3. Container Level: Image scanning, signing
+4. Runtime Level: DAST, monitoring
+5. Infrastructure Level: VPC endpoints, security groups
+
+### **Environment-specific Security Gates**
+• **Dev**: Warnings allowed, continue deployment
+• **Staging**: All HIGH/CRITICAL issues must be fixed
+• **Production**: Only clean images promoted
+
+## 📁 Project Structure
+devsecops-assessment/
+├── infrastructure/
+│   ├── core/                 # Core infrastructure
+│   ├── modules/              # Reusable Terraform modules
+│   └── environments/         # Environment configs
+├── application/              # Java Spring Boot app
+├── .github/workflows/        # CI/CD pipeline
+├── scripts/                  # Security processing scripts
+└── docs/                     # Documentation
+
+
+## 🚀 Key Innovations
+
+### **1. AWS Native Security Ecosystem**
+• Sử dụng 100% AWS native services
+• Không dependency external tools
+• Cost-optimized với AWS services
+
+### **2. SBOM-based Image Scanning**
+• Generate Software Bill of Materials
+• Pre-push vulnerability assessment
+• ECR Inspector integration
+
+### **3. Intelligent Security Gates**
+• Environment-specific thresholds
+• Automated remediation suggestions
+• Progressive security validation
+
+### **4. Comprehensive Reporting**
+• ASFF-compliant findings
+• Automated security reports
+• Integration với Security Hub
+
+## 📊 Security Report Template
+Pipeline tự động generate security report bao gồm:
+• SAST findings summary
+• Dependency vulnerability report
+• Container security assessment
+• DAST results
+• Compliance status
+• Remediation recommendations
+
+Đây là một solution enterprise-grade với security-first principles, sử dụng AWS native services và tuân thủ các best practices của DevSecOps. Bạn có muốn tôi giải thích chi tiết thêm về bất kỳ component nào không?
