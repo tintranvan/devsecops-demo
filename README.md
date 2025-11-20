@@ -160,3 +160,4 @@ The pipeline generates comprehensive security reports including:
 
 *This assessment demonstrates enterprise-grade DevSecOps practices using AWS native services with security-first principles.*
 # devsecops-demo
+# Security scan trigger
