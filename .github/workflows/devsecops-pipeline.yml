@@ -34,6 +34,7 @@ jobs:
       environment: ${{ steps.vars.outputs.environment }}
       service_name: ${{ steps.vars.outputs.service_name }}
       continue_on_error: ${{ steps.vars.outputs.continue_on_error }}
+      target_url: ${{ steps.vars.outputs.target_url }}
     
     steps:
     - name: Set deployment variables
@@ -63,6 +64,7 @@ jobs:
         echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
         echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
         echo "continue_on_error=$CONTINUE_ON_ERROR" >> $GITHUB_OUTPUT
+        echo "target_url=https://$ENVIRONMENT-service-01.editforreal.com" >> $GITHUB_OUTPUT
         
         echo "🚀 Pipeline Configuration:"
         echo "  Environment: $ENVIRONMENT"
@@ -338,220 +340,221 @@ jobs:
   #       fi
 
   # 5. Deploy
-  deploy:
-    name: 🚀 Deploy to ${{ needs.setup.outputs.environment }}
-    runs-on: ubuntu-latest
-    # needs: [setup, build, image-security-scan, container-signing]
-    needs: [setup, build]
-    if: always() && needs.build.result == 'success' && (needs.image-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.container-signing.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
-    environment: ${{ needs.setup.outputs.environment }}
+  # deploy:
+  #   name: 🚀 Deploy to ${{ needs.setup.outputs.environment }}
+  #   runs-on: ubuntu-latest
+  #   # needs: [setup, build, image-security-scan, container-signing]
+  #   needs: [setup, build]
+  #   if: always() && needs.build.result == 'success' && (needs.image-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.container-signing.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
+  #   environment: ${{ needs.setup.outputs.environment }}
     
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+  #   steps:
+  #   - name: Checkout code
+  #     uses: actions/checkout@v4
       
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
-        aws-region: ${{ env.AWS_REGION }}
+  #   - name: Configure AWS credentials
+  #     uses: aws-actions/configure-aws-credentials@v4
+  #     with:
+  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+  #       role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
+  #       aws-region: ${{ env.AWS_REGION }}
                 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-      with:
-        terraform_version: "1.5.0"
+  #   - name: Setup Terraform
+  #     uses: hashicorp/setup-terraform@v3
+  #     with:
+  #       terraform_version: "1.5.0"
         
-    - name: Deploy Application
-      id: deploy
-      run: |
-        echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
+  #   - name: Deploy Application
+  #     id: deploy
+  #     run: |
+  #       echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
         
-        # Set deployment variables
-        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
-        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-        SERVICE_NAME_FULL="devsecops-$ENVIRONMENT-$SERVICE_NAME"
-        CLUSTER_NAME="devsecops-$ENVIRONMENT-cluster"
+  #       # Set deployment variables
+  #       SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
+  #       ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+  #       VERSION="${ENVIRONMENT}-${{ github.run_number }}"
+  #       SERVICE_NAME_FULL="devsecops-$ENVIRONMENT-$SERVICE_NAME"
+  #       CLUSTER_NAME="devsecops-$ENVIRONMENT-cluster"
         
-        # Save current task definition for rollback
-        echo "💾 Saving current state for rollback..."
-        PREVIOUS_TASK_DEF=$(aws ecs describe-services \
-            --cluster $CLUSTER_NAME \
-            --services $SERVICE_NAME_FULL \
-            --region ${{ env.AWS_REGION }} \
-            --query 'services[0].taskDefinition' \
-            --output text 2>/dev/null || echo "")
+  #       # Save current task definition for rollback
+  #       echo "💾 Saving current state for rollback..."
+  #       PREVIOUS_TASK_DEF=$(aws ecs describe-services \
+  #           --cluster $CLUSTER_NAME \
+  #           --services $SERVICE_NAME_FULL \
+  #           --region ${{ env.AWS_REGION }} \
+  #           --query 'services[0].taskDefinition' \
+  #           --output text 2>/dev/null || echo "")
         
         
-        # Continue with deployment...
-        # Image already pushed by build job, proceed with deployment
+  #       # Continue with deployment...
+  #       # Image already pushed by build job, proceed with deployment
         
-        # Deploy with Terraform
-        echo "🏗️ Generating Terraform configuration..."
-        python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
+  #       # Deploy with Terraform
+  #       echo "🏗️ Generating Terraform configuration..."
+  #       python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
         
-        echo "🌍 Deploying infrastructure..."
-        cd application/infrastructure
-        terraform init
-        terraform plan -out=tfplan
-        terraform apply tfplan
+  #       echo "🌍 Deploying infrastructure..."
+  #       cd application/infrastructure
+  #       terraform init
+  #       terraform plan -out=tfplan
+  #       terraform apply tfplan
         
-        echo "✅ Deployment completed successfully"
+  #       echo "✅ Deployment completed successfully"
         
-    - name: Health Check
-      id: healthcheck
-      run: |
-        echo "🏥 Starting health check..."
-        SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
-        CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
+  #   - name: Health Check
+  #     id: healthcheck
+  #     run: |
+  #       echo "🏥 Starting health check..."
+  #       SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
+  #       CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
         
-        # Health check with rollback
-        echo "🏥 Starting health check (5 minutes max)..."
-        for i in {1..30}; do  # 5 minutes max (30 * 10s)
-            echo "  Health check attempt $i/30..."
-            sleep 10
+  #       # Health check with rollback
+  #       echo "🏥 Starting health check (5 minutes max)..."
+  #       for i in {1..30}; do  # 5 minutes max (30 * 10s)
+  #           echo "  Health check attempt $i/30..."
+  #           sleep 10
             
-            SERVICE_STATUS=$(aws ecs describe-services \
-                --cluster $CLUSTER_NAME \
-                --services $SERVICE_NAME_FULL \
-                --region ${{ env.AWS_REGION }} \
-                --query 'services[0].runningCount' \
-                --output text)
+  #           SERVICE_STATUS=$(aws ecs describe-services \
+  #               --cluster $CLUSTER_NAME \
+  #               --services $SERVICE_NAME_FULL \
+  #               --region ${{ env.AWS_REGION }} \
+  #               --query 'services[0].runningCount' \
+  #               --output text)
             
-            DESIRED_COUNT=$(aws ecs describe-services \
-                --cluster $CLUSTER_NAME \
-                --services $SERVICE_NAME_FULL \
-                --region ${{ env.AWS_REGION }} \
-                --query 'services[0].desiredCount' \
-                --output text)
+  #           DESIRED_COUNT=$(aws ecs describe-services \
+  #               --cluster $CLUSTER_NAME \
+  #               --services $SERVICE_NAME_FULL \
+  #               --region ${{ env.AWS_REGION }} \
+  #               --query 'services[0].desiredCount' \
+  #               --output text)
 
-            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
-                # Check deployment status
-                DEPLOYMENT_STATUS=$(aws ecs describe-services \
-                    --cluster $CLUSTER_NAME \
-                    --services $SERVICE_NAME_FULL \
-                    --region ${{ env.AWS_REGION }} \
-                    --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
-                    --output text)
+  #           if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
+  #               # Check deployment status
+  #               DEPLOYMENT_STATUS=$(aws ecs describe-services \
+  #                   --cluster $CLUSTER_NAME \
+  #                   --services $SERVICE_NAME_FULL \
+  #                   --region ${{ env.AWS_REGION }} \
+  #                   --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
+  #                   --output text)
                 
-                if [ "$DEPLOYMENT_STATUS" = "COMPLETED" ]; then
-                    echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
-                    echo "✅ Deployment completed successfully"
-                    echo "health_status=success" >> $GITHUB_OUTPUT
-                    break
-                else
-                    echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
-                fi
-            else
-                echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
-            fi
+  #               if [ "$DEPLOYMENT_STATUS" = "COMPLETED" ]; then
+  #                   echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
+  #                   echo "✅ Deployment completed successfully"
+  #                   echo "health_status=success" >> $GITHUB_OUTPUT
+  #                   break
+  #               else
+  #                   echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
+  #               fi
+  #           else
+  #               echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
+  #           fi
             
-            # If this is the last attempt, prepare for rollback
-            if [ $i -eq 30 ]; then
-                echo "❌ Health check failed after 30 attempts"
+  #           # If this is the last attempt, prepare for rollback
+  #           if [ $i -eq 30 ]; then
+  #               echo "❌ Health check failed after 30 attempts"
                 
-                if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
-                    echo "🔄 Rolling back to previous task definition..."
+  #               if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+  #                   echo "🔄 Rolling back to previous task definition..."
                     
-                    aws ecs update-service \
-                        --cluster $CLUSTER_NAME \
-                        --service $SERVICE_NAME_FULL \
-                        --task-definition $PREVIOUS_TASK_DEF \
-                        --region ${{ env.AWS_REGION }} >/dev/null
+  #                   aws ecs update-service \
+  #                       --cluster $CLUSTER_NAME \
+  #                       --service $SERVICE_NAME_FULL \
+  #                       --task-definition $PREVIOUS_TASK_DEF \
+  #                       --region ${{ env.AWS_REGION }} >/dev/null
                         
-                    echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
-                fi
+  #                   echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
+  #               fi
                 
-                echo "health_status=failed" >> $GITHUB_OUTPUT
-                exit 1
-            fi
-        done
+  #               echo "health_status=failed" >> $GITHUB_OUTPUT
+  #               exit 1
+  #           fi
+  #       done
         
-        # Check service health
-        RUNNING_COUNT=$(aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} \
-          --query 'services[0].runningCount' \
-          --output text)
+  #       # Check service health
+  #       RUNNING_COUNT=$(aws ecs describe-services \
+  #         --cluster $CLUSTER_NAME \
+  #         --services $SERVICE_NAME_FULL \
+  #         --region ${{ env.AWS_REGION }} \
+  #         --query 'services[0].runningCount' \
+  #         --output text)
         
-        DESIRED_COUNT=$(aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} \
-          --query 'services[0].desiredCount' \
-          --output text)
+  #       DESIRED_COUNT=$(aws ecs describe-services \
+  #         --cluster $CLUSTER_NAME \
+  #         --services $SERVICE_NAME_FULL \
+  #         --region ${{ env.AWS_REGION }} \
+  #         --query 'services[0].desiredCount' \
+  #         --output text)
         
-        echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
+  #       echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
         
-        if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
-          echo "✅ Health check passed"
-          echo "health_status=success" >> $GITHUB_OUTPUT
-        else
-          echo "❌ Health check failed"
-          echo "health_status=failed" >> $GITHUB_OUTPUT
-          exit 1
-        fi
+  #       if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
+  #         echo "✅ Health check passed"
+  #         echo "health_status=success" >> $GITHUB_OUTPUT
+  #       else
+  #         echo "❌ Health check failed"
+  #         echo "health_status=failed" >> $GITHUB_OUTPUT
+  #         exit 1
+  #       fi
         
-    - name: Rollback on Health Check Failure
-      if: failure() && steps.deploy.outputs.previous_task_def != ''
-      run: |
-        echo "🔄 Health check failed, rolling back..."
-        aws ecs update-service \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --service ${{ steps.deploy.outputs.service_name_full }} \
-          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-          --region ${{ env.AWS_REGION }}
+  #   - name: Rollback on Health Check Failure
+  #     if: failure() && steps.deploy.outputs.previous_task_def != ''
+  #     run: |
+  #       echo "🔄 Health check failed, rolling back..."
+  #       aws ecs update-service \
+  #         --cluster ${{ steps.deploy.outputs.cluster_name }} \
+  #         --service ${{ steps.deploy.outputs.service_name_full }} \
+  #         --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
+  #         --region ${{ env.AWS_REGION }}
         
-        # Wait for rollback to complete
-        aws ecs wait services-stable \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --services ${{ steps.deploy.outputs.service_name_full }} \
-          --region ${{ env.AWS_REGION }}
+  #       # Wait for rollback to complete
+  #       aws ecs wait services-stable \
+  #         --cluster ${{ steps.deploy.outputs.cluster_name }} \
+  #         --services ${{ steps.deploy.outputs.service_name_full }} \
+  #         --region ${{ env.AWS_REGION }}
         
-        echo "✅ Rollback completed"
+  #       echo "✅ Rollback completed"
         
-    - name: Rollback on Failure
-      if: failure() && steps.deploy.outputs.previous_task_def != ''
-      run: |
-        echo "🔄 Rolling back to previous task definition..."
-        aws ecs update-service \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --service ${{ steps.deploy.outputs.service_name_full }} \
-          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-          --region ${{ env.AWS_REGION }}
-        echo "✅ Rollback completed"
+  #   - name: Rollback on Failure
+  #     if: failure() && steps.deploy.outputs.previous_task_def != ''
+  #     run: |
+  #       echo "🔄 Rolling back to previous task definition..."
+  #       aws ecs update-service \
+  #         --cluster ${{ steps.deploy.outputs.cluster_name }} \
+  #         --service ${{ steps.deploy.outputs.service_name_full }} \
+  #         --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
+  #         --region ${{ env.AWS_REGION }}
+  #       echo "✅ Rollback completed"
         
-        # Set deployment variables
-        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
-        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-        ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
+  #       # Set deployment variables
+  #       SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
+  #       ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+  #       VERSION="${ENVIRONMENT}-${{ github.run_number }}"
+  #       ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
         
-        # Load Docker image from artifact
-        # Image already pushed by build job, proceed with deployment
+  #       # Load Docker image from artifact
+  #       # Image already pushed by build job, proceed with deployment
         
-        # Deploy with Terraform
-        echo "🏗️ Generating Terraform configuration..."
-        NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
-        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
+  #       # Deploy with Terraform
+  #       echo "🏗️ Generating Terraform configuration..."
+  #       NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
+  #       python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
         
-        echo "🌍 Deploying infrastructure..."
-        if [ -d "application/infrastructure" ]; then
-          cd application/infrastructure
-          terraform init -reconfigure
-          terraform apply -auto-approve
-        fi
+  #       echo "🌍 Deploying infrastructure..."
+  #       if [ -d "application/infrastructure" ]; then
+  #         cd application/infrastructure
+  #         terraform init -reconfigure
+  #         terraform apply -auto-approve
+  #       fi
         
-        echo "✅ Deployment completed successfully!"
-        echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
+  #       echo "✅ Deployment completed successfully!"
+  #       echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
 
   # 6. Post-Deploy Security
   dast-security-scan:
     name: 🕷️ DAST Security Scan
     runs-on: ubuntu-latest
-    needs: [setup, deploy]
+    #needs: [setup, deploy]
+    needs: [setup]
     if: always() && needs.deploy.result == 'success'
     outputs:
       dast-outcome: ${{ steps.dast-scan.outcome }}
@@ -577,7 +580,7 @@ jobs:
       run: |
         chmod +x ./scripts/security-dast.sh
         # Script expects: ./script.sh [target_url]
-        ./scripts/security-dast.sh https://dev-service-01.editforreal.com
+        ./scripts/security-dast.sh "${{ needs.setup.outputs.target_url }}"
       continue-on-error: true
       
     - name: Check DAST Results
