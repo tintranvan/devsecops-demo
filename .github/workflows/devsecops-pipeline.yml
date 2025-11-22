@@ -222,19 +222,17 @@ jobs:
         # Clear token from memory
         unset CODEARTIFACT_AUTH_TOKEN
         
-    - name: Save Docker Image
-      run: |
-        docker save ${{ needs.setup.outputs.service_name }}:${{ github.sha }} > /tmp/app-image.tar
-        
     - name: Push to ECR
       run: |
         # Configure ECR repository
-        ECR_REPO="${{ needs.setup.outputs.account_id }}.dkr.ecr.${{ needs.setup.outputs.region }}.amazonaws.com/${{ needs.setup.outputs.service_name }}"
+        ACCOUNT_ID="647272350116"
+        REGION="us-east-1"
+        ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${{ needs.setup.outputs.service_name }}"
         VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
         
         # Login to ECR
         echo "🔐 Logging into ECR..."
-        aws ecr get-login-password --region ${{ needs.setup.outputs.region }} | docker login --username AWS --password-stdin ${{ needs.setup.outputs.account_id }}.dkr.ecr.${{ needs.setup.outputs.region }}.amazonaws.com
+        aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
         
         # Tag and push image
         docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
@@ -269,11 +267,6 @@ jobs:
         role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
         
-    - name: Download Build Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: build-artifacts-${{ needs.setup.outputs.environment }}
-        path: /tmp/
         
     - name: Run Image Security Scanning
       id: image-scan
@@ -321,12 +314,7 @@ jobs:
         role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
         role-session-name: GitHubActions-Signing-${{ needs.setup.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
-        
-    - name: Download Build Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: build-artifacts-${{ needs.setup.outputs.environment }}
-        path: /tmp/
+
         
     - name: Sign Container Image
       id: container-sign
