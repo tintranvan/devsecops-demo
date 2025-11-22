@@ -56,11 +56,7 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ 
-          env.ENVIRONMENT == 'prod' && secrets.AWS_ROLE_PROD || 
-          env.ENVIRONMENT == 'stg' && secrets.AWS_ROLE_STG || 
-          secrets.AWS_ROLE_DEV 
-        }}
+        role-to-assume: ${{ env.ENVIRONMENT == 'prod' && secrets.AWS_ROLE_PROD || env.ENVIRONMENT == 'stg' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
         role-session-name: GitHubActions-DevSecOps-${{ env.ENVIRONMENT }}-${{ env.SERVICE_NAME }}
         aws-region: us-east-1
         
