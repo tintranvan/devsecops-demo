@@ -3,31 +3,28 @@
 # Check ACTIVE Security Findings for project
 # Usage: ./check-findings.sh [profile] [region]
 
-PROFILE=${1:-esoftvn-researching}
+PROFILE=$1
 REGION=${2:-us-east-1}
 
+# Conditionally set profile argument
+if [ -n "$PROFILE" ]; then
+  AWS_ARGS=(--profile "$PROFILE")
+  echo "👤 Using AWS Profile: $PROFILE"
+else
+  AWS_ARGS=()
+  echo "🔑 Using AWS credentials from environment (OIDC)"
+fi
+
 echo "🔍 AWS Inspector Code Security Analysis"
+echo "📂 Project: tintranvan/devsecops-demo:main"
 echo "════════════════════════════════════════════════════════════"
 
 # Get only ACTIVE CODE_VULNERABILITY findings
-if [ -n "$PROFILE" ] && [ "$PROFILE" != "" ] && [ "$PROFILE" != "default" ]; then
-    echo "🔍 DEBUG: Using profile: $PROFILE"
-    FINDINGS=$(aws inspector2 list-findings \
-        --profile $PROFILE \
-        --region $REGION \
-        --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-        --output json || echo '{"findings":[]}')
-else
-    echo "🔍 DEBUG: Using OIDC (no profile)"
-    FINDINGS=$(aws inspector2 list-findings \
-        --region $REGION \
-        --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-        --output json || echo '{"findings":[]}')
-fi
-
-# Debug: Check if FINDINGS variable is populated
-echo "🔍 DEBUG: FINDINGS variable length: $(echo "$FINDINGS" | jq '.findings | length')"
-echo "🔍 DEBUG: First few chars of FINDINGS: $(echo "$FINDINGS" | head -c 100)"
+FINDINGS=$(aws inspector2 list-findings \
+    "${AWS_ARGS[@]}" \
+    --region "$REGION" \
+    --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
+    --output json 2>/dev/null || echo '{"findings":[]}')
 
 # Count by severity
 CRITICAL=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "CRITICAL")] | length')
