@@ -84,6 +84,8 @@ jobs:
     name: 🔍 SAST/IaC/SCA/SBOM Security Scan
     runs-on: ubuntu-latest
     needs: setup
+    outputs:
+      sast-outcome: ${{ steps.sast-scan.outcome }}
     
     steps:
     - name: Checkout code
@@ -135,6 +137,8 @@ jobs:
     name: 🐳 Dockerfile Security Scan
     runs-on: ubuntu-latest
     needs: setup
+    outputs:
+      dockerfile-outcome: ${{ steps.dockerfile-scan.outcome }}
     
     steps:
     - name: Checkout code
@@ -478,9 +482,27 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
         
-        # Show actual job results with proper status
-        echo "- **SAST/IaC/SCA/SBOM**: ${{ needs.sast-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Dockerfile Security**: ${{ needs.dockerfile-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        # SAST Results - based on step outcome, not job result
+        if [ "${{ needs.sast-security-scan.outputs.sast-outcome }}" = "success" ]; then
+          echo "- ✅ **SAST/IaC/SCA/SBOM**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **SAST/IaC/SCA/SBOM**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **SAST/IaC/SCA/SBOM**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # Dockerfile Results - based on step outcome
+        if [ "${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}" = "success" ]; then
+          echo "- ✅ **Dockerfile Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Dockerfile Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Dockerfile Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
         echo "- **Image Security**: ${{ needs.image-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- **Container Signing**: ${{ needs.container-signing.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- **DAST Security**: ${{ needs.dast-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
