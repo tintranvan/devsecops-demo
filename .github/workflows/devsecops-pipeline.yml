@@ -100,7 +100,17 @@ jobs:
       run: |
         if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
           chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-          # Script expects: ./script.sh [profile] [region] - pass empty string for profile to skip --profile flag
+          
+          # Debug AWS credentials and Inspector2 access
+          echo "🔍 Debug AWS access:"
+          echo "AWS Account: $(aws sts get-caller-identity --query Account --output text)"
+          echo "AWS Region: ${{ env.AWS_REGION }}"
+          
+          # Test Inspector2 access
+          echo "🔍 Testing Inspector2 access:"
+          aws inspector2 list-findings --region ${{ env.AWS_REGION }} --max-items 1 || echo "Inspector2 access failed"
+          
+          # Run script with empty profile for OIDC
           ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
         else
           echo "⚠️ SAST script not found, skipping..."
