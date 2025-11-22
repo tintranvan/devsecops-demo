@@ -5,7 +5,7 @@ set -e
 
 TARGET_URL="${1:-https://dev-service-01.editforreal.com}"
 REGION="us-east-1"
-AWS_PROFILE="esoftvn-researching"
+AWS_PROFILE="${AWS_PROFILE:-}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 REPORT_DIR="./security/reports"
 
@@ -152,11 +152,18 @@ if [ -f "$ASFF_FILE" ]; then
         title=$(echo "$finding" | jq -r '.Title')
         
         set +e  # Temporarily disable exit on error
-        ERROR_OUTPUT=$(aws sqs send-message \
-            --queue-url "$SQS_QUEUE_URL" \
-            --message-body "$finding" \
-            --region "$REGION" \
-            --profile "$AWS_PROFILE" 2>&1)
+        if [ -n "$AWS_PROFILE" ]; then
+            ERROR_OUTPUT=$(aws sqs send-message \
+                --queue-url "$SQS_QUEUE_URL" \
+                --message-body "$finding" \
+                --region "$REGION" \
+                --profile "$AWS_PROFILE" 2>&1)
+        else
+            ERROR_OUTPUT=$(aws sqs send-message \
+                --queue-url "$SQS_QUEUE_URL" \
+                --message-body "$finding" \
+                --region "$REGION" 2>&1)
+        fi
         EXIT_CODE=$?
         set -e  # Re-enable exit on error
         
