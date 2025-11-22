@@ -92,7 +92,7 @@ attempt=0
 success="false"
 
 echo "  ⏳ Waiting for scan to initialize..."
-sleep 20
+sleep 40
 
 run_scan_check() {
     aws_cli ecr describe-image-scan-findings \
