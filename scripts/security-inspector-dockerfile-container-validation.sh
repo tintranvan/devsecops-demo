@@ -151,20 +151,27 @@ send_to_sqs() {
     
     while IFS= read -r finding; do
         # Create SQS message with finding
-        message_body=$(echo "$finding" | jq -c .)
+        message_body=$(echo "$finding" | jq -c . | sed 's/"/\\"/g')
         
         # Send to SQS
         if [ "$PROFILE" = "none" ]; then
-            aws_cmd="aws sqs send-message --queue-url $SQS_QUEUE_URL --message-body $message_body --region $REGION"
+            aws_result=$(aws sqs send-message \
+                --queue-url "$SQS_QUEUE_URL" \
+                --message-body "$message_body" \
+                --region "$REGION" 2>&1)
         else
-            aws_cmd="aws sqs send-message --queue-url $SQS_QUEUE_URL --message-body $message_body --region $REGION --profile $PROFILE"
+            aws_result=$(aws sqs send-message \
+                --queue-url "$SQS_QUEUE_URL" \
+                --message-body "$message_body" \
+                --region "$REGION" \
+                --profile "$PROFILE" 2>&1)
         fi
         
-        if $aws_cmd >/dev/null 2>&1; then
+        if [ $? -eq 0 ]; then
             echo "✅ Sent finding to SQS: $(echo "$finding" | jq -r '.Title')"
             ((success_count++))
         else
-            echo "❌ Failed to send finding: $(echo "$finding" | jq -r '.Title')"
+            echo "❌ Failed to send finding: $(echo "$finding" | jq -r '.Title') - Error: $aws_result"
             ((failed_count++))
         fi
         
