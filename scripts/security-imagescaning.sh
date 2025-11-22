@@ -111,50 +111,54 @@ aws_cli inspector2 enable --resource-types ECR --region "$AWS_REGION" 2>/dev/nul
     echo "  ℹ️  Inspector ECR already enabled"
 }
 
-# Step 6: Wait for Inspector Enhanced scan results
-echo -e "${BLUE}🔍 Waiting for Inspector Enhanced scan...${NC}"
+# Step 6: Wait for ECR Enhanced scan completion
+echo -e "${BLUE}🔍 Waiting for ECR Enhanced scan...${NC}"
 
-# Inspector Enhanced scanning runs automatically when image is pushed
-echo "  ℹ️  Inspector Enhanced scanning runs automatically on push"
-echo "  ⏳ Waiting for Inspector scan to complete..."
-
-# Wait for Inspector scan results
-max_attempts=10
+# Wait for ECR Enhanced scan results (like your reference script)
+max_attempts=20
 attempt=0
+success="false"
+
+echo "  ⏳ Waiting 60 seconds for scan to initialize..."
+sleep 60
+
+run_scan_check() {
+    aws_cli ecr describe-image-scan-findings \
+        --repository-name "$ECR_REPOSITORY" \
+        --image-id imageTag="$IMAGE_TAG" \
+        --region "$AWS_REGION" > "$OUTPUT_DIR/ecr_enhanced_results_${TIMESTAMP}.json" 2>/dev/null
+    
+    if [ $? -eq 0 ]; then
+        # Check if enhancedFindings exist
+        enhanced_count=$(jq '.imageScanFindings.enhancedFindings | length' "$OUTPUT_DIR/ecr_enhanced_results_${TIMESTAMP}.json" 2>/dev/null || echo "0")
+        if [ "$enhanced_count" != "null" ] && [ "$enhanced_count" != "0" ]; then
+            success="true"
+        fi
+    fi
+}
 
 while [ $attempt -lt $max_attempts ]; do
-    # Check if we got a valid number using jq instead of AWS query
-    findings_result=$(aws_cli inspector2 list-findings \
-        --filter-criteria '{"resourceType":[{"value":"AWS_ECR_CONTAINER_IMAGE","comparison":"EQUALS"}],"ecrImageRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
-        --region "$AWS_REGION" 2>/dev/null)
-    
-    findings_count=$(echo "$findings_result" | jq '.findings | length' 2>/dev/null || echo "0")
-    
-    # Check if we got a valid number
-    if [[ "$findings_count" =~ ^[0-9]+$ ]]; then
-        echo "  ✅ Inspector scan completed - found $findings_count findings"
+    run_scan_check
+    if [ "$success" = "true" ]; then
+        echo "  ✅ ECR Enhanced scan completed - found findings"
         break
+    else
+        echo "  ⏳ Waiting for ECR Enhanced scan... ($((attempt + 1))/$max_attempts)"
+        sleep 30
+        ((attempt++))
     fi
-    
-    echo "  ⏳ Inspector scan in progress... ($((attempt + 1))/$max_attempts)"
-    sleep 20
-    ((attempt++))
 done
 
-if [ $attempt -ge $max_attempts ]; then
-    echo "  ⚠️  Inspector scan timeout - proceeding with available data"
-    findings_count=0
+if [ "$success" != "true" ]; then
+    echo "  ⚠️  ECR Enhanced scan timeout - proceeding with available data"
 fi
 
-# Step 7: Get Inspector scan results (skip ECR scan wait)
-echo -e "${BLUE}📊 Retrieving Inspector scan results...${NC}"
+# Step 7: Analyze ECR Enhanced scan results
+echo -e "${BLUE}📊 Analyzing ECR Enhanced scan results...${NC}"
 
-# Get Inspector findings for this repository and tag
-aws_cli inspector2 list-findings \
-    --filter-criteria '{"resourceType":[{"value":"AWS_ECR_CONTAINER_IMAGE","comparison":"EQUALS"}],"ecrImageRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
-    --region "$AWS_REGION" > "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
-
-echo "  ✅ Inspector results saved to: inspector_scan_results_${TIMESTAMP}.json"
+# Use the ECR Enhanced results file
+results_file="$OUTPUT_DIR/ecr_enhanced_results_${TIMESTAMP}.json"
+echo "  ✅ ECR Enhanced results saved to: $(basename "$results_file")"
 
 if [ $attempt -ge $max_attempts ]; then
     echo -e "${YELLOW}⚠️  Scan timeout, retrieving partial results...${NC}"
@@ -168,12 +172,12 @@ analyze_scan_results() {
     echo "=============================="
     
     if command -v jq &> /dev/null; then
-        # Extract summary from Inspector format (not ECR format)
-        total_findings=$(jq '.findings | length' "$results_file" 2>/dev/null || echo 0)
-        critical_count=$(jq '[.findings[] | select(.severity == "CRITICAL")] | length' "$results_file" 2>/dev/null || echo 0)
-        high_count=$(jq '[.findings[] | select(.severity == "HIGH")] | length' "$results_file" 2>/dev/null || echo 0)
-        medium_count=$(jq '[.findings[] | select(.severity == "MEDIUM")] | length' "$results_file" 2>/dev/null || echo 0)
-        low_count=$(jq '[.findings[] | select(.severity == "LOW")] | length' "$results_file" 2>/dev/null || echo 0)
+        # Extract summary from ECR Enhanced format (like your reference)
+        total_findings=$(jq '.imageScanFindings.enhancedFindings | length' "$results_file" 2>/dev/null || echo 0)
+        critical_count=$(jq '[.imageScanFindings.enhancedFindings[] | select(.severity == "CRITICAL")] | length' "$results_file" 2>/dev/null || echo 0)
+        high_count=$(jq '[.imageScanFindings.enhancedFindings[] | select(.severity == "HIGH")] | length' "$results_file" 2>/dev/null || echo 0)
+        medium_count=$(jq '[.imageScanFindings.enhancedFindings[] | select(.severity == "MEDIUM")] | length' "$results_file" 2>/dev/null || echo 0)
+        low_count=$(jq '[.imageScanFindings.enhancedFindings[] | select(.severity == "LOW")] | length' "$results_file" 2>/dev/null || echo 0)
         
         echo "📊 Vulnerability Summary:"
         echo "  Critical: $critical_count"
@@ -185,7 +189,7 @@ analyze_scan_results() {
         if [ "$total_findings" -gt 0 ]; then
             echo ""
             echo "🔍 Top 5 Critical/High Vulnerabilities:"
-            jq -r '.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "- \(.severity): \(.title) - \(.description)"' "$results_file" 2>/dev/null | head -5
+            jq -r '.imageScanFindings.enhancedFindings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "- \(.severity): \(.title) - \(.description)"' "$results_file" 2>/dev/null | head -5
         fi
         
         # Generate summary report
@@ -221,11 +225,11 @@ fi)
 
 ## Top Vulnerabilities
 
-$(jq -r '.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "### \(.severity): \(.title)\n\n**Description:** \(.description)\n\n**Finding ARN:** \(.findingArn)\n\n---\n"' "$results_file" 2>/dev/null | head -20)
+$(jq -r '.imageScanFindings.enhancedFindings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "### \(.severity): \(.title)\n\n**Description:** \(.description)\n\n**Source URL:** \(.packageVulnerabilityDetails.sourceUrl // "N/A")\n\n---\n"' "$results_file" 2>/dev/null | head -20)
 
 ## Files Generated
 
-- \`inspector_scan_results_${TIMESTAMP}.json\` - Complete Inspector scan results
+- \`ecr_enhanced_results_${TIMESTAMP}.json\` - Complete ECR Enhanced scan results
 - \`ecr_scan_report_${TIMESTAMP}.md\` - This report
 
 ## Next Steps
@@ -262,7 +266,7 @@ EOF
 }
 
 # Analyze results
-analyze_scan_results "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
+analyze_scan_results "$OUTPUT_DIR/ecr_enhanced_results_${TIMESTAMP}.json"
 scan_exit_code=$?
 
 # Cleanup local images
