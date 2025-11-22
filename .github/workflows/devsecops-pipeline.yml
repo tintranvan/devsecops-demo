@@ -106,9 +106,19 @@ jobs:
           echo "AWS Account: $(aws sts get-caller-identity --query Account --output text)"
           echo "AWS Region: ${{ env.AWS_REGION }}"
           
-          # Test Inspector2 access
-          echo "🔍 Testing Inspector2 access:"
-          aws inspector2 list-findings --region ${{ env.AWS_REGION }} --max-items 1 || echo "Inspector2 access failed"
+          # Debug environment differences
+          echo "🔍 Debug environment:"
+          echo "OS: $(uname -a)"
+          echo "jq version: $(jq --version)"
+          echo "bash version: $BASH_VERSION"
+          
+          # Test jq parsing with sample data
+          echo "🔍 Testing jq parsing:"
+          echo '{"findings":[{"severity":"MEDIUM"},{"severity":"HIGH"}]}' | jq '[.findings[] | select(.severity == "MEDIUM")] | length'
+          
+          # Test Inspector2 with same filter as script
+          echo "🔍 Testing Inspector2 with script filter:"
+          aws inspector2 list-findings --region ${{ env.AWS_REGION }} --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' --output json | jq '.findings | length'
           
           # Run script with empty profile for OIDC
           ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
