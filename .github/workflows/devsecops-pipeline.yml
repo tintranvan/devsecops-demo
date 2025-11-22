@@ -122,16 +122,6 @@ jobs:
         else
           echo "✅ SAST passed successfully"
         fi
-      
-    - name: Upload SAST Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: sast-reports-${{ needs.setup.outputs.environment }}
-        path: |
-          security/reports/*.json
-          security/reports/*.html
-        retention-days: 30
 
   dockerfile-security-scan:
     name: 🐳 Dockerfile Security Scan
@@ -158,8 +148,8 @@ jobs:
       id: dockerfile-scan
       run: |
         chmod +x ./scripts/security-inspector-dockerfile-container-validation.sh
-        # Script expects: ./script.sh [profile] [region] - use 'default' for OIDC
-        ./scripts/security-inspector-dockerfile-container-validation.sh default ${{ env.AWS_REGION }}
+        # Use "none" for OIDC like SAST script
+        ./scripts/security-inspector-dockerfile-container-validation.sh none ${{ env.AWS_REGION }}
       continue-on-error: true
       
     - name: Check Dockerfile Results
@@ -175,15 +165,6 @@ jobs:
         else
           echo "✅ Dockerfile scan passed successfully"
         fi
-      
-    - name: Upload Dockerfile Security Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: dockerfile-reports-${{ needs.setup.outputs.environment }}
-        path: |
-          security/reports/*.json
-        retention-days: 30
 
   # 3. Build & Package
   build:

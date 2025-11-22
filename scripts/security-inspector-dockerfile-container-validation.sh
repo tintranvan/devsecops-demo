@@ -4,7 +4,7 @@
 set -e
 
 # Configuration from parameters
-PROFILE=${1:-esoftvn-researching}
+PROFILE=${1:-none}
 REGION=${2:-us-east-1}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,20 +70,42 @@ echo "✅ SBOM generated successfully"
 
 # Run vulnerability scan
 echo "🛡️  Running vulnerability scan..."
-docker run --rm \
-    -v "$PROJECT_ROOT/application:/workspace" \
-    -v "$OUTPUT_DIR:/output" \
-    -e AWS_PROFILE="$PROFILE" \
-    -e AWS_REGION="$REGION" \
-    -v ~/.aws:/root/.aws:ro \
-    inspector-sbomgen:latest \
-    directory \
-    --path /workspace \
-    --scanners dockerfile \
-    --scan-sbom \
-    --outfile /output/dockerfile_vulnerabilities_${TIMESTAMP}.json || {
-    echo "⚠️  Vulnerability scan failed, continuing..."
-}
+
+# Set AWS environment for Docker container
+if [ "$PROFILE" = "none" ]; then
+    # Use OIDC credentials from environment
+    docker run --rm \
+        -v "$PROJECT_ROOT/application:/workspace" \
+        -v "$OUTPUT_DIR:/output" \
+        -e AWS_REGION="$REGION" \
+        -e AWS_ACCESS_KEY_ID \
+        -e AWS_SECRET_ACCESS_KEY \
+        -e AWS_SESSION_TOKEN \
+        inspector-sbomgen:latest \
+        directory \
+        --path /workspace \
+        --scanners dockerfile \
+        --scan-sbom \
+        --outfile /output/dockerfile_vulnerabilities_${TIMESTAMP}.json || {
+        echo "⚠️  Vulnerability scan failed, continuing..."
+    }
+else
+    # Use profile-based credentials (local development only)
+    docker run --rm \
+        -v "$PROJECT_ROOT/application:/workspace" \
+        -v "$OUTPUT_DIR:/output" \
+        -e AWS_PROFILE="$PROFILE" \
+        -e AWS_REGION="$REGION" \
+        -v ~/.aws:/root/.aws:ro \
+        inspector-sbomgen:latest \
+        directory \
+        --path /workspace \
+        --scanners dockerfile \
+        --scan-sbom \
+        --outfile /output/dockerfile_vulnerabilities_${TIMESTAMP}.json || {
+        echo "⚠️  Vulnerability scan failed, continuing..."
+    }
+fi
 
 # Send findings to SQS for Lambda processing
 send_to_sqs() {
@@ -92,7 +114,11 @@ send_to_sqs() {
     echo "📤 Sending findings to SQS for Lambda processing..."
     
     # Get AWS account ID dynamically
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null || echo "647272350116")
+    if [ "$PROFILE" = "none" ]; then
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "647272350116")
+    else
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null || echo "647272350116")
+    fi
     
     # SQS Queue URL (from our deployed infrastructure)
     SQS_QUEUE_URL="https://queue.amazonaws.com/$AWS_ACCOUNT_ID/security-findings-queue"
@@ -118,11 +144,13 @@ send_to_sqs() {
         message_body=$(echo "$finding" | jq -c .)
         
         # Send to SQS
-        if aws sqs send-message \
-            --queue-url "$SQS_QUEUE_URL" \
-            --message-body "$message_body" \
-            --region "$REGION" \
-            --profile "$PROFILE" >/dev/null 2>&1; then
+        if [ "$PROFILE" = "none" ]; then
+            aws_cmd="aws sqs send-message --queue-url $SQS_QUEUE_URL --message-body $message_body --region $REGION"
+        else
+            aws_cmd="aws sqs send-message --queue-url $SQS_QUEUE_URL --message-body $message_body --region $REGION --profile $PROFILE"
+        fi
+        
+        if $aws_cmd >/dev/null 2>&1; then
             echo "✅ Sent finding to SQS: $(echo "$finding" | jq -r '.Title')"
             ((success_count++))
         else
@@ -153,7 +181,11 @@ generate_asff_findings() {
     echo "🔄 Converting Dockerfile findings to ASFF format..."
     
     # Get AWS account ID and region
-    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null || echo "647272350116")
+    if [ "$PROFILE" = "none" ]; then
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null || echo "647272350116")
+    else
+        AWS_ACCOUNT_ID=$(aws sts get-caller-identity --profile "$PROFILE" --query Account --output text 2>/dev/null || echo "647272350116")
+    fi
     
     # Generate ASFF findings
     cat > "$asff_file" << EOF
