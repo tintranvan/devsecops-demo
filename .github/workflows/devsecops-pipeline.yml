@@ -555,7 +555,7 @@ jobs:
     runs-on: ubuntu-latest
     #needs: [setup, deploy]
     needs: [setup]
-    if: always() && needs.deploy.result == 'success'
+    #if: always() && needs.deploy.result == 'success'
     outputs:
       dast-outcome: ${{ steps.dast-scan.outcome }}
     
