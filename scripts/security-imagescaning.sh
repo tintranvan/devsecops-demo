@@ -155,23 +155,12 @@ aws_cli inspector2 list-findings \
     --region "$AWS_REGION" > "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
 
 echo "  ✅ Inspector results saved to: inspector_scan_results_${TIMESTAMP}.json"
+
+if [ $attempt -ge $max_attempts ]; then
     echo -e "${YELLOW}⚠️  Scan timeout, retrieving partial results...${NC}"
 fi
 
-# Step 8: Get Inspector scan results (not ECR results)
-echo -e "${BLUE}📊 Retrieving Inspector scan results...${NC}"
-
-# Get image hash for Inspector query
-IMAGE_HASH=$(docker inspect --format='{{.Id}}' "$ECR_URI:$IMAGE_TAG" | cut -d: -f2)
-
-# Get Inspector findings
-aws_cli inspector2 list-findings \
-    --filter-criteria '{"ecrImageHash":[{"value":"'$IMAGE_HASH'","comparison":"EQUALS"}]}' \
-    --region "$AWS_REGION" > "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
-
-echo "  ✅ Inspector results saved to: inspector_scan_results_${TIMESTAMP}.json"
-
-# Step 9: Analyze results
+# Step 8: Analyze scan results
 analyze_scan_results() {
     local results_file="$1"
     
