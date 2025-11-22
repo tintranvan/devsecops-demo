@@ -406,31 +406,67 @@ jobs:
         SERVICE_NAME_FULL="${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
         CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
         
-        # Debug: Check if cluster exists
-        echo "🔍 Checking cluster: $CLUSTER_NAME"
-        aws ecs describe-clusters --clusters $CLUSTER_NAME --region ${{ env.AWS_REGION }} || {
-          echo "❌ Cluster $CLUSTER_NAME not found"
-          exit 1
-        }
-        
-        # Debug: Check if service exists
-        echo "🔍 Checking service: $SERVICE_NAME_FULL"
-        aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} || {
-          echo "❌ Service $SERVICE_NAME_FULL not found in cluster $CLUSTER_NAME"
-          echo "📋 Available services:"
-          aws ecs list-services --cluster $CLUSTER_NAME --region ${{ env.AWS_REGION }}
-          exit 1
-        }
-        
-        # Wait for service to stabilize
-        echo "⏳ Waiting for service to stabilize..."
-        aws ecs wait services-stable \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }}
+        # Health check with rollback
+        echo "🏥 Starting health check (5 minutes max)..."
+        for i in {1..30}; do  # 5 minutes max (30 * 10s)
+            echo "  Health check attempt $i/30..."
+            sleep 10
+            
+            SERVICE_STATUS=$(aws ecs describe-services \
+                --cluster $CLUSTER_NAME \
+                --services $SERVICE_NAME_FULL \
+                --region ${{ env.AWS_REGION }} \
+                --query 'services[0].runningCount' \
+                --output text)
+            
+            DESIRED_COUNT=$(aws ecs describe-services \
+                --cluster $CLUSTER_NAME \
+                --services $SERVICE_NAME_FULL \
+                --region ${{ env.AWS_REGION }} \
+                --query 'services[0].desiredCount' \
+                --output text)
+
+            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
+                # Check deployment status
+                DEPLOYMENT_STATUS=$(aws ecs describe-services \
+                    --cluster $CLUSTER_NAME \
+                    --services $SERVICE_NAME_FULL \
+                    --region ${{ env.AWS_REGION }} \
+                    --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
+                    --output text)
+                
+                if [ "$DEPLOYMENT_STATUS" = "COMPLETED" ]; then
+                    echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
+                    echo "✅ Deployment completed successfully"
+                    echo "health_status=success" >> $GITHUB_OUTPUT
+                    break
+                else
+                    echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
+                fi
+            else
+                echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
+            fi
+            
+            # If this is the last attempt, prepare for rollback
+            if [ $i -eq 30 ]; then
+                echo "❌ Health check failed after 30 attempts"
+                
+                if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+                    echo "🔄 Rolling back to previous task definition..."
+                    
+                    aws ecs update-service \
+                        --cluster $CLUSTER_NAME \
+                        --service $SERVICE_NAME_FULL \
+                        --task-definition $PREVIOUS_TASK_DEF \
+                        --region ${{ env.AWS_REGION }} >/dev/null
+                        
+                    echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
+                fi
+                
+                echo "health_status=failed" >> $GITHUB_OUTPUT
+                exit 1
+            fi
+        done
         
         # Check service health
         RUNNING_COUNT=$(aws ecs describe-services \
