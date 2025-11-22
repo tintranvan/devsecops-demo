@@ -1,19 +1,18 @@
 #!/bin/bash
 
 # AWS Signer Notation Container Signing
-# Proper container image signing using Notation + AWS Signer
+# Usage: ./security-container-signer.sh [image_name] [profile_name] [region]
 
 set -e
 
-PROFILE_NAME="devsecops_image_demo_sign"
-REGION="us-east-1"
+IMAGE_NAME="${1:-647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-dev-java-app:latest}"
+PROFILE_NAME="${2:-devsecops_image_demo_sign}"
+REGION="${3:-us-east-1}"
 ACCOUNT_ID="647272350116"
-IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-dev-java-app:20251121-155018"
-AWS_PROFILE="esoftvn-researching"
 
 echo "🔐 AWS Signer Notation Container Signing"
-echo "Profile: $PROFILE_NAME"
 echo "Image: $IMAGE_NAME"
+echo "Profile: $PROFILE_NAME"
 echo "Region: $REGION"
 
 # Step 1: Install Notation CLI if not exists

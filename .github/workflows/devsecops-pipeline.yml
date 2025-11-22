@@ -98,7 +98,8 @@ jobs:
       run: |
         if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
           chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
+          # Script expects: ./script.sh [profile] [region] - use 'default' for OIDC
+          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh default ${{ env.AWS_REGION }}
         else
           echo "⚠️ SAST script not found, skipping..."
         fi
@@ -135,8 +136,9 @@ jobs:
       
     - name: Run Dockerfile Security Validation
       run: |
-        chmod +x ./scripts/security-inspector-dockerfile-container-validation-clean.sh
-        ./scripts/security-inspector-dockerfile-container-validation-clean.sh
+        chmod +x ./scripts/security-inspector-dockerfile-container-validation.sh
+        # Script expects: ./script.sh [profile] [region] - use 'default' for OIDC
+        ./scripts/security-inspector-dockerfile-container-validation.sh default ${{ env.AWS_REGION }}
       continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
       
     - name: Upload Dockerfile Security Reports
@@ -235,7 +237,10 @@ jobs:
       run: |
         if [ -f "./scripts/security-imagescaning.sh" ]; then
           chmod +x ./scripts/security-imagescaning.sh
-          ./scripts/security-imagescaning.sh ${{ needs.setup.outputs.service_name }}:${{ github.sha }}
+          # Set environment variables that the script expects
+          export ENVIRONMENT=${{ needs.setup.outputs.environment }}
+          export IMAGE_TAG=${{ github.sha }}
+          ./scripts/security-imagescaning.sh
         else
           echo "⚠️ Image scanning script not found, skipping..."
         fi
@@ -271,7 +276,9 @@ jobs:
       run: |
         if [ -f "./scripts/security-container-signer.sh" ]; then
           chmod +x ./scripts/security-container-signer.sh
-          ./scripts/security-container-signer.sh ${{ needs.setup.outputs.service_name }}:${{ github.sha }}
+          # Script expects: ./script.sh [image_name] [profile_name] [region]
+          IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ github.sha }}"
+          ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
         else
           echo "⚠️ Container signing script not found, skipping..."
         fi
@@ -364,6 +371,7 @@ jobs:
     - name: Run DAST Security Scan
       run: |
         chmod +x ./scripts/security-dast.sh
+        # Script expects: ./script.sh [target_url]
         ./scripts/security-dast.sh https://dev-service-01.editforreal.com
       continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
       
