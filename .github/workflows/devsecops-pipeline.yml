@@ -101,7 +101,7 @@ jobs:
       run: |
         if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
           chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "none" ${{ env.AWS_REGION }}
+          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
         else
           echo "⚠️ SAST script not found, skipping..."
         fi
