@@ -14,7 +14,7 @@ echo "Target: $TARGET_URL"
 echo "Report Dir: $REPORT_DIR"
 
 mkdir -p "$REPORT_DIR"
-chown 1000:1000 "$REPORT_DIR"
+chmod 777 "$REPORT_DIR"
 
 # Step 1: Run OWASP ZAP baseline scan
 echo "📋 Step 1: Running OWASP ZAP baseline scan"
