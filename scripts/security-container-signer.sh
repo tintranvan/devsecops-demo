@@ -70,9 +70,17 @@ echo "📋 Step 4: Authenticating with ECR"
 # Configure Docker to not use credential helpers
 mkdir -p ~/.docker
 echo '{"credsStore":""}' > ~/.docker/config.json
-# Configure notation to use plain text credential storage
-mkdir -p ~/.config/notation
-echo '{"credentialsStore":""}' > ~/.config/notation/config.json
+
+# First login with Docker (this will store credentials)
+if [ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ]; then
+    aws ecr get-login-password --region $REGION --profile $AWS_PROFILE | \
+        docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+else
+    aws ecr get-login-password --region $REGION | \
+        docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+fi
+
+# Then login with notation (should reuse Docker credentials)
 if [ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ]; then
     aws ecr get-login-password --region $REGION --profile $AWS_PROFILE | \
         $NOTATION_CMD login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
