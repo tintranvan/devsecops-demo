@@ -119,8 +119,8 @@ max_attempts=20
 attempt=0
 success="false"
 
-echo "  ⏳ Waiting 60 seconds for scan to initialize..."
-sleep 60
+echo "  ⏳ Waiting for scan to initialize..."
+sleep 30
 
 run_scan_check() {
     aws_cli ecr describe-image-scan-findings \

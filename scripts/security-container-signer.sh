@@ -9,6 +9,7 @@ IMAGE_NAME="${1:-647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-dev-java
 PROFILE_NAME="${2:-devsecops_image_demo_sign}"
 REGION="${3:-us-east-1}"
 ACCOUNT_ID="647272350116"
+AWS_PROFILE="${AWS_PROFILE:-default}"
 
 echo "🔐 AWS Signer Notation Container Signing"
 echo "Image: $IMAGE_NAME"
@@ -19,7 +20,15 @@ echo "Region: $REGION"
 echo "📋 Step 1: Installing Notation CLI"
 if ! command -v ./notation &> /dev/null && [ ! -f "./notation" ]; then
     echo "Installing Notation CLI..."
-    curl -Lo notation.tar.gz "https://github.com/notaryproject/notation/releases/download/v1.0.0/notation_1.0.0_darwin_amd64.tar.gz"
+    # Detect platform
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "x86_64" ]; then
+        ARCH="amd64"
+    elif [ "$ARCH" = "arm64" ]; then
+        ARCH="arm64"
+    fi
+    curl -Lo notation.tar.gz "https://github.com/notaryproject/notation/releases/download/v1.0.0/notation_1.0.0_${OS}_${ARCH}.tar.gz"
     tar xzf notation.tar.gz
     chmod +x notation
     rm notation.tar.gz
@@ -58,8 +67,13 @@ echo "✅ Docker credentials configured"
 
 # Step 4: Login to ECR using Notation
 echo "📋 Step 4: Authenticating with ECR"
-aws ecr get-login-password --region $REGION --profile $AWS_PROFILE | \
-    $NOTATION_CMD login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+if [ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ]; then
+    aws ecr get-login-password --region $REGION --profile $AWS_PROFILE | \
+        $NOTATION_CMD login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+else
+    aws ecr get-login-password --region $REGION | \
+        $NOTATION_CMD login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+fi
 echo "✅ ECR authentication successful"
 
 # Step 5: Get image digest
@@ -68,7 +82,7 @@ IMAGE_DIGEST=$(aws ecr describe-images \
     --repository-name devsecops-dev-java-app \
     --image-ids imageTag=20251121-155018 \
     --region $REGION \
-    --profile $AWS_PROFILE \
+    $([ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ] && echo "--profile $AWS_PROFILE") \
     --query 'imageDetails[0].imageDigest' \
     --output text)
 
