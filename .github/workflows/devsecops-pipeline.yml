@@ -171,6 +171,7 @@ jobs:
     name: 🏗️ Build & Package
     runs-on: ubuntu-latest
     #needs: [setup, sast-security-scan, dockerfile-security-scan]
+    needs: [setup]
     if: always() && (needs.sast-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.dockerfile-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
     
     steps:
@@ -341,6 +342,7 @@ jobs:
     name: 🚀 Deploy to ${{ needs.setup.outputs.environment }}
     runs-on: ubuntu-latest
     # needs: [setup, build, image-security-scan, container-signing]
+    needs: [setup, build]
     if: always() && needs.build.result == 'success' && (needs.image-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.container-signing.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
     environment: ${{ needs.setup.outputs.environment }}
     
