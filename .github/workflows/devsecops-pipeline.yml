@@ -97,15 +97,29 @@ jobs:
         aws-region: ${{ env.AWS_REGION }}
         
     - name: Run SAST/IaC/SCA/SBOM/Policy Check
+      id: sast-scan
       run: |
         if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
           chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-          # Run script with empty profile for OIDC
-          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
+          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "none" ${{ env.AWS_REGION }}
         else
           echo "⚠️ SAST script not found, skipping..."
         fi
-      continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
+      continue-on-error: true
+      
+    - name: Check SAST Results
+      run: |
+        if [ "${{ steps.sast-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ SAST FAILED in DEV - Continuing with warnings"
+            echo "::warning title=SAST Security Issues::Security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 SAST FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ SAST passed successfully"
+        fi
       
     - name: Upload SAST Reports
       uses: actions/upload-artifact@v4
@@ -113,8 +127,8 @@ jobs:
       with:
         name: sast-reports-${{ needs.setup.outputs.environment }}
         path: |
-          security/sast/*.json
-          security/sast/*.html
+          security/reports/*.json
+          security/reports/*.html
         retention-days: 30
 
   dockerfile-security-scan:
@@ -137,11 +151,26 @@ jobs:
       uses: docker/setup-buildx-action@v3
       
     - name: Run Dockerfile Security Validation
+      id: dockerfile-scan
       run: |
         chmod +x ./scripts/security-inspector-dockerfile-container-validation.sh
         # Script expects: ./script.sh [profile] [region] - use 'default' for OIDC
         ./scripts/security-inspector-dockerfile-container-validation.sh default ${{ env.AWS_REGION }}
-      continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
+      continue-on-error: true
+      
+    - name: Check Dockerfile Results
+      run: |
+        if [ "${{ steps.dockerfile-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ DOCKERFILE SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Dockerfile Security Issues::Dockerfile security issues detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 DOCKERFILE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Dockerfile scan passed successfully"
+        fi
       
     - name: Upload Dockerfile Security Reports
       uses: actions/upload-artifact@v4
@@ -149,7 +178,7 @@ jobs:
       with:
         name: dockerfile-reports-${{ needs.setup.outputs.environment }}
         path: |
-          security/inspector/*.json
+          security/reports/*.json
         retention-days: 30
 
   # 3. Build & Package
@@ -236,6 +265,7 @@ jobs:
       run: docker load < /tmp/app-image.tar
         
     - name: Run Image Security Scanning
+      id: image-scan
       run: |
         if [ -f "./scripts/security-imagescaning.sh" ]; then
           chmod +x ./scripts/security-imagescaning.sh
@@ -246,7 +276,21 @@ jobs:
         else
           echo "⚠️ Image scanning script not found, skipping..."
         fi
-      continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
+      continue-on-error: true
+      
+    - name: Check Image Scan Results
+      run: |
+        if [ "${{ steps.image-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ IMAGE SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Image Security Issues::Container image security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 IMAGE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Image scan passed successfully"
+        fi
 
   container-signing:
     name: ✍️ Container Image Signing
@@ -275,6 +319,7 @@ jobs:
       run: docker load < /tmp/app-image.tar
         
     - name: Sign Container Image
+      id: container-sign
       run: |
         if [ -f "./scripts/security-container-signer.sh" ]; then
           chmod +x ./scripts/security-container-signer.sh
@@ -284,7 +329,21 @@ jobs:
         else
           echo "⚠️ Container signing script not found, skipping..."
         fi
-      continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
+      continue-on-error: true
+      
+    - name: Check Container Signing Results
+      run: |
+        if [ "${{ steps.container-sign.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ CONTAINER SIGNING FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Container Signing Issues::Container signing failed in dev environment. Review signing configuration before promoting to staging."
+          else
+            echo "🚨 CONTAINER SIGNING FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Container signing passed successfully"
+        fi
 
   # 5. Deploy
   deploy:
@@ -371,11 +430,26 @@ jobs:
         python-version: '3.11'
         
     - name: Run DAST Security Scan
+      id: dast-scan
       run: |
         chmod +x ./scripts/security-dast.sh
         # Script expects: ./script.sh [target_url]
         ./scripts/security-dast.sh https://dev-service-01.editforreal.com
-      continue-on-error: ${{ needs.setup.outputs.continue_on_error == 'true' }}
+      continue-on-error: true
+      
+    - name: Check DAST Results
+      run: |
+        if [ "${{ steps.dast-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ DAST SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=DAST Security Issues::Dynamic security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 DAST SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ DAST scan passed successfully"
+        fi
       
     - name: Upload DAST Security Reports
       uses: actions/upload-artifact@v4
@@ -403,11 +477,72 @@ jobs:
         echo "## 🎯 Service: ${{ needs.setup.outputs.service_name }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
-        echo "- **SAST/IaC/SCA/SBOM**: ${{ needs.sast-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Dockerfile Security**: ${{ needs.dockerfile-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Image Security**: ${{ needs.image-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **Container Signing**: ${{ needs.container-signing.result }}" >> $GITHUB_STEP_SUMMARY
-        echo "- **DAST Security**: ${{ needs.dast-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        
+        # SAST Results
+        if [ "${{ needs.sast-security-scan.result }}" = "success" ]; then
+          echo "- ✅ **SAST/IaC/SCA/SBOM**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **SAST/IaC/SCA/SBOM**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **SAST/IaC/SCA/SBOM**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # Dockerfile Results
+        if [ "${{ needs.dockerfile-security-scan.result }}" = "success" ]; then
+          echo "- ✅ **Dockerfile Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Dockerfile Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Dockerfile Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # Image Security Results
+        if [ "${{ needs.image-security-scan.result }}" = "success" ]; then
+          echo "- ✅ **Image Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Image Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Image Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # Container Signing Results
+        if [ "${{ needs.container-signing.result }}" = "success" ]; then
+          echo "- ✅ **Container Signing**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Container Signing**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Container Signing**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        # DAST Results
+        if [ "${{ needs.dast-security-scan.result }}" = "success" ]; then
+          echo "- ✅ **DAST Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **DAST Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **DAST Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🎯 Security Policy" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+          echo "**DEV Environment**: Security issues show as warnings - deployment continues" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Action Required**: Fix all security issues before promoting to staging" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**${{ needs.setup.outputs.environment }} Environment**: Security issues block deployment" >> $GITHUB_STEP_SUMMARY
+          echo "🚨 **Zero Tolerance**: All security issues must be resolved" >> $GITHUB_STEP_SUMMARY
+        fi
+        
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔗 Security Hub Integration" >> $GITHUB_STEP_SUMMARY
         echo "All security findings have been automatically sent to AWS Security Hub via SQS-Lambda pipeline." >> $GITHUB_STEP_SUMMARY
