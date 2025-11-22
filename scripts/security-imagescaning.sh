@@ -78,33 +78,26 @@ else
         --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 fi
 
-# Step 3: Build Docker image with CodeArtifact integration
-echo -e "${BLUE}🏗️  Building Docker image with CodeArtifact...${NC}"
-cd "$BUILD_CONTEXT"
+# Step 3: Tag existing Docker image (skip build - use artifact from build job)
+echo -e "${BLUE}📥 Using Docker image from build job...${NC}"
 
-# Get CodeArtifact auth token
-echo -e "${BLUE}🔐 Getting CodeArtifact auth token...${NC}"
-CODEARTIFACT_AUTH_TOKEN=$(aws_cli codeartifact get-authorization-token \
-  --domain devsecops-domain \
-  --domain-owner "$ACCOUNT_ID" \
-  --region "$AWS_REGION" \
-  --query authorizationToken \
-  --output text)
+# The image should already be loaded by the workflow from artifact
+# Just tag it for ECR
+SERVICE_NAME="demo-app"
+COMMIT_SHA=$(echo "$IMAGE_TAG" | cut -d'-' -f2-)
 
-# Create temporary pip.conf
-echo -e "${BLUE}📝 Creating temporary pip.conf...${NC}"
-cat > pip.conf << EOF
-[global]
-index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-${ACCOUNT_ID}.d.codeartifact.${AWS_REGION}.amazonaws.com/pypi/python-packages/simple/
-EOF
-
-# Build Docker image
-docker build --platform linux/amd64 -f Dockerfile -t "$ECR_REPOSITORY:$IMAGE_TAG" .
-docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$ECR_URI:$IMAGE_TAG"
-
-# Cleanup pip.conf
-rm -f pip.conf
-cd ..
+# Tag the existing image for ECR
+if docker images --format "table {{.Repository}}:{{.Tag}}" | grep -q "$SERVICE_NAME:"; then
+    echo -e "${BLUE}🏷️  Tagging image for ECR...${NC}"
+    # Find the loaded image and tag it
+    EXISTING_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "$SERVICE_NAME:" | head -1)
+    docker tag "$EXISTING_IMAGE" "$ECR_REPOSITORY:$IMAGE_TAG"
+    docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$ECR_URI:$IMAGE_TAG"
+    echo "  ✅ Tagged: $EXISTING_IMAGE → $ECR_URI:$IMAGE_TAG"
+else
+    echo "  ❌ No image found from build job. Please check build step."
+    exit 1
+fi
 
 # Step 4: Push to ECR
 echo -e "${BLUE}📤 Pushing image to ECR...${NC}"
@@ -120,11 +113,10 @@ aws_cli inspector2 enable --resource-types ECR --region "$AWS_REGION" 2>/dev/nul
 
 # Step 6: Trigger scan
 echo -e "${BLUE}🔍 Triggering Inspector scan...${NC}"
-aws ecr start-image-scan \
+aws_cli ecr start-image-scan \
     --repository-name "$ECR_REPOSITORY" \
     --image-id imageTag="$IMAGE_TAG" \
-    --region "$AWS_REGION" \
-    --profile "$AWS_PROFILE" || {
+    --region "$AWS_REGION" || {
     echo "  ⚠️  Scan may already be in progress"
 }
 
