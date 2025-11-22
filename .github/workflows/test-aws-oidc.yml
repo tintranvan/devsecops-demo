@@ -1,0 +1,41 @@
+name: Test AWS OIDC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test-aws-access:
+    name: Test AWS OIDC Authentication
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+        role-session-name: GitHubActions-DevSecOps-Test
+        aws-region: us-east-1
+        
+    - name: Test AWS access
+      run: |
+        echo "🔍 Testing AWS access..."
+        echo "AWS Account ID: $(aws sts get-caller-identity --query Account --output text)"
+        echo "AWS User/Role: $(aws sts get-caller-identity --query Arn --output text)"
+        echo "AWS Region: $AWS_DEFAULT_REGION"
+        
+    - name: Test SQS access
+      run: |
+        echo "📤 Testing SQS access..."
+        aws sqs list-queues --region us-east-1
+        
+    - name: Test Security Hub access
+      run: |
+        echo "🛡️ Testing Security Hub access..."
+        aws securityhub describe-hub --region us-east-1 || echo "Security Hub not enabled or no access"
