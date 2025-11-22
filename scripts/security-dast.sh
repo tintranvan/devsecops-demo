@@ -151,22 +151,21 @@ if [ -f "$ASFF_FILE" ]; then
     while read -r finding; do
         title=$(echo "$finding" | jq -r '.Title')
         
-        echo "🔍 Attempting to send finding: $title"
-        echo "📍 Queue URL: $SQS_QUEUE_URL"
-        echo "📍 Region: $REGION"
-        
+        set +e  # Temporarily disable exit on error
         ERROR_OUTPUT=$(aws sqs send-message \
             --queue-url "$SQS_QUEUE_URL" \
             --message-body "$finding" \
             --region "$REGION" \
             --profile "$AWS_PROFILE" 2>&1)
+        EXIT_CODE=$?
+        set -e  # Re-enable exit on error
         
-        if [ $? -eq 0 ]; then
+        if [ $EXIT_CODE -eq 0 ]; then
             echo "✅ Sent finding to SQS: $title"
             ((success_count++))
         else
             echo "❌ Failed to send finding to SQS: $title"
-            echo "🔍 AWS CLI Error: $ERROR_OUTPUT"
+            echo "🔍 Error: $ERROR_OUTPUT"
             ((failed_count++))
         fi
     done < <(jq -c '.[]' "$ASFF_FILE")
