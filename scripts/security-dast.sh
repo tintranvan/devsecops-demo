@@ -155,11 +155,12 @@ if [ -f "$ASFF_FILE" ]; then
             --queue-url "$SQS_QUEUE_URL" \
             --message-body "$finding" \
             --region "$REGION" \
-            --profile "$AWS_PROFILE" >/dev/null 2>&1; then
+            --profile "$AWS_PROFILE"; then
             echo "✅ Sent finding to SQS: $title"
             ((success_count++))
         else
             echo "❌ Failed to send finding to SQS: $title"
+            echo "🔍 AWS CLI error shown above"
             ((failed_count++))
         fi
     done < <(jq -c '.[]' "$ASFF_FILE")
