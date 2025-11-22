@@ -392,10 +392,10 @@ jobs:
         python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
         
         echo "🌍 Deploying infrastructure..."
-        cd infrastructure
+        cd application/infrastructure
         terraform init
-        terraform plan -var-file="environments/${ENVIRONMENT}.tfvars"
-        terraform apply -var-file="environments/${ENVIRONMENT}.tfvars" -auto-approve
+        terraform plan -out=tfplan
+        terraform apply tfplan -auto-approve
         
         echo "✅ Deployment completed successfully"
         
