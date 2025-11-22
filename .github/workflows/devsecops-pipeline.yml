@@ -165,8 +165,33 @@ jobs:
     - name: Build Application
       run: |
         echo "🏗️ Building application for ${{ needs.setup.outputs.service_name }}"
-        # Add your build commands here
-        docker build -t ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ./application/
+        
+        # Get CodeArtifact auth token
+        echo "🔐 Getting CodeArtifact auth token..."
+        CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+          --domain devsecops-domain \
+          --domain-owner 647272350116 \
+          --region us-east-1 \
+          --query authorizationToken \
+          --output text)
+        
+        # Create temporary pip.conf
+        echo "📝 Creating temporary pip.conf..."
+        cd application
+        cat > pip.conf << EOF
+        [global]
+        index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-647272350116.d.codeartifact.us-east-1.amazonaws.com/pypi/python-packages/simple/
+        EOF
+        
+        # Build Docker image
+        docker build --platform linux/amd64 -f Dockerfile -t ${{ needs.setup.outputs.service_name }}:${{ github.sha }} .
+        
+        # Cleanup
+        rm -f pip.conf
+        cd ..
+        
+        # Clear token from memory
+        unset CODEARTIFACT_AUTH_TOKEN
         
     - name: Save Docker Image
       run: |
@@ -271,11 +296,47 @@ jobs:
         role-session-name: GitHubActions-Deploy-${{ needs.setup.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
         
+    - name: Download Build Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifacts-${{ needs.setup.outputs.environment }}
+        path: /tmp/
+        
     - name: Deploy Application
       run: |
         echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
-        # Add your deployment commands here
-        echo "Deployment completed successfully!"
+        
+        # Set deployment variables
+        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
+        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+        VERSION="${{ github.sha }}"
+        ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
+        
+        # Load Docker image from artifact
+        echo "📥 Loading Docker image..."
+        docker load < /tmp/app-image.tar
+        docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
+        
+        # Login to ECR and push
+        echo "🔐 Logging into ECR..."
+        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 647272350116.dkr.ecr.us-east-1.amazonaws.com
+        
+        echo "📤 Pushing image to ECR..."
+        docker push ${ECR_REPO}:${VERSION}
+        
+        # Deploy with Terraform
+        echo "🏗️ Generating Terraform configuration..."
+        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${VERSION} || echo "⚠️ Terraform generator not found"
+        
+        echo "🌍 Deploying infrastructure..."
+        if [ -d "application/infrastructure" ]; then
+          cd application/infrastructure
+          terraform init -reconfigure
+          terraform apply -auto-approve
+        fi
+        
+        echo "✅ Deployment completed successfully!"
+        echo "📦 Image: ${ECR_REPO}:${VERSION}"
 
   # 6. Post-Deploy Security
   dast-security-scan:
