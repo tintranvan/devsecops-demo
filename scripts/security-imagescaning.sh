@@ -225,7 +225,7 @@ $(jq -r '.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | 
 
 ## Files Generated
 
-- \`ecr_scan_results_${TIMESTAMP}.json\` - Complete scan results
+- \`inspector_scan_results_${TIMESTAMP}.json\` - Complete Inspector scan results
 - \`ecr_scan_report_${TIMESTAMP}.md\` - This report
 
 ## Next Steps
@@ -262,7 +262,7 @@ EOF
 }
 
 # Analyze results
-analyze_scan_results "$OUTPUT_DIR/ecr_scan_results_${TIMESTAMP}.json"
+analyze_scan_results "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
 scan_exit_code=$?
 
 # Cleanup local images
