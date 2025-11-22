@@ -168,7 +168,7 @@ jobs:
           echo "✅ Dockerfile scan passed successfully"
         fi
 
-  3. Build & Package
+  #3. Build & Package
   build:
     name: 🏗️ Build & Package
     runs-on: ubuntu-latest
