@@ -371,7 +371,7 @@ jobs:
         SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
         ENVIRONMENT="${{ needs.setup.outputs.environment }}"
         VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-        SERVICE_NAME_FULL="$ENVIRONMENT-$SERVICE_NAME"
+        SERVICE_NAME_FULL="devsecops-$ENVIRONMENT-$SERVICE_NAME"
         CLUSTER_NAME="devsecops-$ENVIRONMENT-cluster"
         
         # Save current task definition for rollback
@@ -403,7 +403,7 @@ jobs:
       id: healthcheck
       run: |
         echo "🏥 Starting health check..."
-        SERVICE_NAME_FULL="${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
+        SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
         CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
         
         # Health check with rollback
