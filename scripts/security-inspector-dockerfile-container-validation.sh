@@ -500,6 +500,10 @@ EOF
     
     echo "✅ ASFF file generated: $(basename "$asff_file")"
     
+    # Debug: Check how many findings were generated
+    final_findings_count=$(jq '.Findings | length' "$asff_file" 2>/dev/null || echo 0)
+    echo "🔍 Debug: Generated $final_findings_count findings in ASFF file"
+    
     # Send to SQS for Lambda processing
     send_to_sqs "$asff_file"
 }
