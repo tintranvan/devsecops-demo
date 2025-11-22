@@ -68,6 +68,11 @@ docker run --rm \
 
 echo "✅ SBOM generated successfully"
 
+# Fix file permissions after Docker run
+echo "🔧 Fixing file permissions..."
+sudo chown -R $(whoami):$(whoami) "$OUTPUT_DIR" 2>/dev/null || true
+sudo chmod -R 644 "$OUTPUT_DIR"/*.json 2>/dev/null || true
+
 # Run vulnerability scan
 echo "🛡️  Running vulnerability scan..."
 
@@ -106,6 +111,11 @@ else
         echo "⚠️  Vulnerability scan failed, continuing..."
     }
 fi
+
+# Fix file permissions after vulnerability scan
+echo "🔧 Fixing file permissions after vulnerability scan..."
+sudo chown -R $(whoami):$(whoami) "$OUTPUT_DIR" 2>/dev/null || true
+sudo chmod -R 644 "$OUTPUT_DIR"/*.json 2>/dev/null || true
 
 # Send findings to SQS for Lambda processing
 send_to_sqs() {
