@@ -355,9 +355,120 @@ jobs:
         role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
                 
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.5.0"
+        
     - name: Deploy Application
+      id: deploy
       run: |
         echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
+        
+        # Set deployment variables
+        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
+        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
+        SERVICE_NAME_FULL="$ENVIRONMENT-$SERVICE_NAME"
+        CLUSTER_NAME="flodesk-$ENVIRONMENT-cluster"
+        
+        # Save current task definition for rollback
+        echo "💾 Saving current state for rollback..."
+        PREVIOUS_TASK_DEF=$(aws ecs describe-services \
+            --cluster $CLUSTER_NAME \
+            --services $SERVICE_NAME_FULL \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].taskDefinition' \
+            --output text 2>/dev/null || echo "")
+        
+        
+        # Continue with deployment...
+        # Image already pushed by build job, proceed with deployment
+        
+        # Deploy with Terraform
+        echo "🏗️ Generating Terraform configuration..."
+        python3 scripts/generate-service-infra.py \
+          --service-name "$SERVICE_NAME" \
+          --environment "$ENVIRONMENT" \
+          --image-tag "$VERSION" \
+          --modules application
+        
+        echo "🌍 Deploying infrastructure..."
+        cd infrastructure
+        terraform init
+        terraform plan -var-file="environments/${ENVIRONMENT}.tfvars"
+        terraform apply -var-file="environments/${ENVIRONMENT}.tfvars" -auto-approve
+        
+        echo "✅ Deployment completed successfully"
+        
+    - name: Health Check
+      id: healthcheck
+      run: |
+        echo "🏥 Starting health check..."
+        SERVICE_NAME_FULL="${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
+        CLUSTER_NAME="flodesk-${{ needs.setup.outputs.environment }}-cluster"
+        
+        # Wait for service to stabilize
+        echo "⏳ Waiting for service to stabilize..."
+        aws ecs wait services-stable \
+          --cluster $CLUSTER_NAME \
+          --services $SERVICE_NAME_FULL \
+          --region ${{ env.AWS_REGION }}
+        
+        # Check service health
+        RUNNING_COUNT=$(aws ecs describe-services \
+          --cluster $CLUSTER_NAME \
+          --services $SERVICE_NAME_FULL \
+          --region ${{ env.AWS_REGION }} \
+          --query 'services[0].runningCount' \
+          --output text)
+        
+        DESIRED_COUNT=$(aws ecs describe-services \
+          --cluster $CLUSTER_NAME \
+          --services $SERVICE_NAME_FULL \
+          --region ${{ env.AWS_REGION }} \
+          --query 'services[0].desiredCount' \
+          --output text)
+        
+        echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
+        
+        if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
+          echo "✅ Health check passed"
+          echo "health_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Health check failed"
+          echo "health_status=failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi
+        
+    - name: Rollback on Health Check Failure
+      if: failure() && steps.deploy.outputs.previous_task_def != ''
+      run: |
+        echo "🔄 Health check failed, rolling back..."
+        aws ecs update-service \
+          --cluster ${{ steps.deploy.outputs.cluster_name }} \
+          --service ${{ steps.deploy.outputs.service_name_full }} \
+          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
+          --region ${{ env.AWS_REGION }}
+        
+        # Wait for rollback to complete
+        aws ecs wait services-stable \
+          --cluster ${{ steps.deploy.outputs.cluster_name }} \
+          --services ${{ steps.deploy.outputs.service_name_full }} \
+          --region ${{ env.AWS_REGION }}
+        
+        echo "✅ Rollback completed"
+        
+    - name: Rollback on Failure
+      if: failure() && steps.deploy.outputs.previous_task_def != ''
+      run: |
+        echo "🔄 Rolling back to previous task definition..."
+        aws ecs update-service \
+          --cluster ${{ steps.deploy.outputs.cluster_name }} \
+          --service ${{ steps.deploy.outputs.service_name_full }} \
+          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
+          --region ${{ env.AWS_REGION }}
+        echo "✅ Rollback completed"
         
         # Set deployment variables
         SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
