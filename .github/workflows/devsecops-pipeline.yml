@@ -215,12 +215,28 @@ jobs:
         index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-647272350116.d.codeartifact.us-east-1.amazonaws.com/pypi/python-packages/simple/
         EOF
         
-        # Build Docker image
-        docker build --platform linux/amd64 -f Dockerfile -t ${{ needs.setup.outputs.service_name }}:${{ github.sha }} .
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build and cache Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: Dockerfile
+        build-args: |
+          SERVICE_NAME=${{ needs.setup.outputs.service_name }}
+        platforms: linux/amd64
+        tags: |
+          ${{ needs.setup.outputs.service_name }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        load: true
+        push: false
         
+    - name: Cleanup Build Files
+      run: |
         # Cleanup
-        rm -f pip.conf
-        cd ..
+        rm -f application/pip.conf
         
         # Clear token from memory
         unset CODEARTIFACT_AUTH_TOKEN
