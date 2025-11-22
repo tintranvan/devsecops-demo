@@ -151,7 +151,7 @@ send_to_sqs() {
     
     while IFS= read -r finding; do
         # Create SQS message with finding
-        message_body=$(echo "$finding" | jq -c . | sed 's/"/\\"/g')
+        message_body=$(echo "$finding" | jq -c .)
         
         # Send to SQS
         if [ "$PROFILE" = "none" ]; then
@@ -171,7 +171,7 @@ send_to_sqs() {
             echo "✅ Sent finding to SQS: $(echo "$finding" | jq -r '.Title')"
             ((success_count++))
         else
-            echo "❌ Failed to send finding: $(echo "$finding" | jq -r '.Title') - Error: $aws_result"
+            echo "❌ Failed to send finding: $(echo "$finding" | jq -r '.Title')"
             ((failed_count++))
         fi
         
