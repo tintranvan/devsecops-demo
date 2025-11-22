@@ -224,10 +224,10 @@ jobs:
         
     - name: Push to ECR
       run: |
-        # Configure ECR repository
+        # Configure ECR repository (use existing repo)
         ACCOUNT_ID="647272350116"
         REGION="us-east-1"
-        ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${{ needs.setup.outputs.service_name }}"
+        ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
         VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
         
         # Login to ECR
