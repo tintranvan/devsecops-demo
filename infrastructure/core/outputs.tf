@@ -112,6 +112,16 @@ output "sqs_dlq_url" {
 }
 
 # Security Hub Outputs
+output "security_hub_processor_lambda_arn" {
+  description = "ARN of the Security Hub processor Lambda function"
+  value       = module.security_hub_processor.lambda_function_arn
+}
+
+output "security_hub_processor_sqs_url" {
+  description = "URL of the Security Hub processor SQS queue"
+  value       = module.security_hub_processor.sqs_queue_url
+}
+
 output "security_hub_account_id" {
   description = "Security Hub account ID"
   value       = module.security_hub.security_hub_account_id

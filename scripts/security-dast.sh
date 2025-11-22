@@ -131,21 +131,50 @@ python3 "$REPORT_DIR/convert-zap-to-asff.py" \
 
 echo "✅ ZAP results converted to ASFF format"
 
-# Step 3: Send findings to Security Hub
-echo "📋 Step 3: Sending findings to AWS Security Hub"
+# Step 3: Send findings to SQS for Lambda processing
+echo "📋 Step 3: Sending findings to SQS for Lambda processing"
 ASFF_FILE="$REPORT_DIR/zap-report-$TIMESTAMP-asff.json"
+SQS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/647272350116/security-findings-queue"
 
 if [ -f "$ASFF_FILE" ]; then
-    # Import findings to Security Hub
-    aws securityhub batch-import-findings \
-        --findings "$(cat "$ASFF_FILE")" \
-        --region "$REGION" \
-        --profile "$AWS_PROFILE" || {
-        echo "⚠️  Failed to import findings to Security Hub"
-    }
-    echo "✅ Findings sent to Security Hub"
+    echo "📤 Sending DAST findings to SQS queue..."
+    echo "📍 Queue: security-findings-queue"
+    
+    # Count findings
+    finding_count=$(jq 'length' "$ASFF_FILE")
+    echo "📊 Processing $finding_count findings..."
+    
+    # Send each finding to SQS
+    success_count=0
+    failed_count=0
+    
+    while read -r finding; do
+        title=$(echo "$finding" | jq -r '.Title')
+        
+        if aws sqs send-message \
+            --queue-url "$SQS_QUEUE_URL" \
+            --message-body "$finding" \
+            --region "$REGION" \
+            --profile "$AWS_PROFILE" >/dev/null 2>&1; then
+            echo "✅ Sent finding to SQS: $title"
+            ((success_count++))
+        else
+            echo "❌ Failed to send finding to SQS: $title"
+            ((failed_count++))
+        fi
+    done < <(jq -c '.[]' "$ASFF_FILE")
+    
+    echo ""
+    echo "📊 SQS Send Summary:"
+    echo "  ✅ Successful: $success_count"
+    echo "  ❌ Failed: $failed_count"
+    echo "  📍 Queue: security-findings-queue"
+    echo ""
+    echo "🔄 Lambda will process these findings and send to Security Hub"
+    echo "⏱️  Check Security Hub in 1-2 minutes for processed findings"
+    echo "🔗 View in Security Hub: https://us-east-1.console.aws.amazon.com/securityhub/"
 else
-    echo "⚠️  ASFF file not found, skipping Security Hub import"
+    echo "⚠️  ASFF file not found, skipping SQS send"
 fi
 
 # Step 4: Generate summary report

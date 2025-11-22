@@ -221,3 +221,8 @@ resource "aws_ecr_lifecycle_policy" "java_app" {
     ]
   })
 }
+
+# Security Hub Processor Module
+module "security_hub_processor" {
+  source = "../modules/security-hub-processor"
+}
