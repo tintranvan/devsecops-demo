@@ -359,7 +359,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-Deploy-${{ needs.setup.outputs.environment }}
+        role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
         
     - name: Download Build Artifacts
