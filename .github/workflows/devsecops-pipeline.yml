@@ -478,60 +478,12 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
         
-        # SAST Results
-        if [ "${{ needs.sast-security-scan.result }}" = "success" ]; then
-          echo "- ✅ **SAST/IaC/SCA/SBOM**: PASSED" >> $GITHUB_STEP_SUMMARY
-        else
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "- ⚠️ **SAST/IaC/SCA/SBOM**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- 🚨 **SAST/IaC/SCA/SBOM**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-          fi
-        fi
-        
-        # Dockerfile Results
-        if [ "${{ needs.dockerfile-security-scan.result }}" = "success" ]; then
-          echo "- ✅ **Dockerfile Security**: PASSED" >> $GITHUB_STEP_SUMMARY
-        else
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "- ⚠️ **Dockerfile Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- 🚨 **Dockerfile Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-          fi
-        fi
-        
-        # Image Security Results
-        if [ "${{ needs.image-security-scan.result }}" = "success" ]; then
-          echo "- ✅ **Image Security**: PASSED" >> $GITHUB_STEP_SUMMARY
-        else
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "- ⚠️ **Image Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- 🚨 **Image Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-          fi
-        fi
-        
-        # Container Signing Results
-        if [ "${{ needs.container-signing.result }}" = "success" ]; then
-          echo "- ✅ **Container Signing**: PASSED" >> $GITHUB_STEP_SUMMARY
-        else
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "- ⚠️ **Container Signing**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- 🚨 **Container Signing**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-          fi
-        fi
-        
-        # DAST Results
-        if [ "${{ needs.dast-security-scan.result }}" = "success" ]; then
-          echo "- ✅ **DAST Security**: PASSED" >> $GITHUB_STEP_SUMMARY
-        else
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "- ⚠️ **DAST Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "- 🚨 **DAST Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-          fi
-        fi
+        # Show actual job results with proper status
+        echo "- **SAST/IaC/SCA/SBOM**: ${{ needs.sast-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dockerfile Security**: ${{ needs.dockerfile-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Image Security**: ${{ needs.image-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container Signing**: ${{ needs.container-signing.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **DAST Security**: ${{ needs.dast-security-scan.result }}" >> $GITHUB_STEP_SUMMARY
         
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🎯 Security Policy" >> $GITHUB_STEP_SUMMARY
