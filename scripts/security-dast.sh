@@ -5,7 +5,7 @@ set -e
 
 TARGET_URL="${1:-https://dev-service-01.editforreal.com}"
 REGION="us-east-1"
-AWS_PROFILE="${AWS_PROFILE:-}"
+AWS_PROFILE="esoftvn-researching"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 REPORT_DIR="./security/reports"
 
@@ -14,23 +14,16 @@ echo "Target: $TARGET_URL"
 echo "Report Dir: $REPORT_DIR"
 
 mkdir -p "$REPORT_DIR"
+chown 1000:1000 "$REPORT_DIR"
 
 # Step 1: Run OWASP ZAP baseline scan
 echo "📋 Step 1: Running OWASP ZAP baseline scan"
-# Use temp directory to avoid permission issues
-TEMP_DIR="/tmp/zap-reports-$TIMESTAMP"
-mkdir -p "$TEMP_DIR"
-docker run --rm -v "$TEMP_DIR":/zap/wrk/:rw \
+docker run --rm -v $(pwd)/$REPORT_DIR:/zap/wrk/:rw \
     -t zaproxy/zap-stable zap-baseline.py \
     -t "$TARGET_URL" \
     -J "zap-report-$TIMESTAMP.json" \
     -r "zap-report-$TIMESTAMP.html" \
     -x "zap-report-$TIMESTAMP.xml" || ZAP_EXIT_CODE=$?
-
-# Copy reports to final location
-mkdir -p "$REPORT_DIR"
-cp "$TEMP_DIR"/* "$REPORT_DIR/" 2>/dev/null || true
-rm -rf "$TEMP_DIR"
 
 echo "✅ ZAP scan completed with exit code: ${ZAP_EXIT_CODE:-0}"
 
@@ -159,24 +152,11 @@ if [ -f "$ASFF_FILE" ]; then
     while read -r finding; do
         title=$(echo "$finding" | jq -r '.Title')
         
-        if [ -n "$AWS_PROFILE" ]; then
-            if aws sqs send-message \
-                --queue-url "$SQS_QUEUE_URL" \
-                --message-body "$finding" \
-                --region "$REGION" \
-                --profile "$AWS_PROFILE" >/dev/null 2>&1; then
-                echo "✅ Sent finding to SQS: $title"
-                ((success_count++))
-            fi
-        else
-            if aws sqs send-message \
-                --queue-url "$SQS_QUEUE_URL" \
-                --message-body "$finding" \
-                --region "$REGION" >/dev/null 2>&1; then
-                echo "✅ Sent finding to SQS: $title"
-                ((success_count++))
-            fi
-        fi
+        if aws sqs send-message \
+            --queue-url "$SQS_QUEUE_URL" \
+            --message-body "$finding" \
+            --region "$REGION" \
+            --profile "$AWS_PROFILE" >/dev/null 2>&1; then
             echo "✅ Sent finding to SQS: $title"
             ((success_count++))
         else
