@@ -7,15 +7,21 @@ PROFILE=${1:-esoftvn-researching}
 REGION=${2:-us-east-1}
 
 echo "🔍 AWS Inspector Code Security Analysis"
-echo "📂 Project: tintranvan/devsecops-demo:main"
 echo "════════════════════════════════════════════════════════════"
 
 # Get only ACTIVE CODE_VULNERABILITY findings
-FINDINGS=$(aws inspector2 list-findings \
-    --profile $PROFILE \
-    --region $REGION \
-    --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-    --output json 2>/dev/null || echo '{"findings":[]}')
+if [ -n "$PROFILE" ] && [ "$PROFILE" != "" ]; then
+    FINDINGS=$(aws inspector2 list-findings \
+        --profile $PROFILE \
+        --region $REGION \
+        --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
+        --output json 2>/dev/null || echo '{"findings":[]}')
+else
+    FINDINGS=$(aws inspector2 list-findings \
+        --region $REGION \
+        --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
+        --output json 2>/dev/null || echo '{"findings":[]}')
+fi
 
 # Count by severity
 CRITICAL=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "CRITICAL")] | length')

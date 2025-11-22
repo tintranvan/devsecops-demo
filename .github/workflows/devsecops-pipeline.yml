@@ -98,8 +98,8 @@ jobs:
       run: |
         if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
           chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-          # Script expects: ./script.sh [profile] [region] - use 'default' for OIDC
-          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh default ${{ env.AWS_REGION }}
+          # Script expects: ./script.sh [profile] [region] - pass empty string for profile to skip --profile flag
+          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
         else
           echo "⚠️ SAST script not found, skipping..."
         fi
