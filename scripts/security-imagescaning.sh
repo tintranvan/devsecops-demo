@@ -86,39 +86,13 @@ echo -e "${BLUE}📥 Using Docker image from build job...${NC}"
 SERVICE_NAME="demo-app"
 COMMIT_SHA=$(echo "$IMAGE_TAG" | cut -d'-' -f2-)
 
-# Tag the existing image for ECR
-if docker images --format "table {{.Repository}}:{{.Tag}}" | grep -q "$SERVICE_NAME:"; then
-    echo -e "${BLUE}🏷️  Tagging image for ECR...${NC}"
-    # Find the loaded image and tag it
-    EXISTING_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "$SERVICE_NAME:" | head -1)
-    docker tag "$EXISTING_IMAGE" "$ECR_REPOSITORY:$IMAGE_TAG"
-    docker tag "$ECR_REPOSITORY:$IMAGE_TAG" "$ECR_URI:$IMAGE_TAG"
-    echo "  ✅ Tagged: $EXISTING_IMAGE → $ECR_URI:$IMAGE_TAG"
-else
-    echo "  ❌ No image found from build job. Please check build step."
-    exit 1
-fi
-
-# Step 4: Skip push (image already pushed by build job)
-echo -e "${BLUE}📤 Skipping push - image already in ECR from build job${NC}"
-echo -e "${GREEN}✅ Using existing image: $ECR_URI:$IMAGE_TAG${NC}"
-
-# Step 5: Enable Inspector scanning
-echo -e "${BLUE}🔧 Enabling Inspector ECR scanning...${NC}"
-aws_cli inspector2 enable --resource-types ECR --region "$AWS_REGION" 2>/dev/null || {
-    echo "  ℹ️  Inspector ECR already enabled"
-}
-
-# Step 6: Wait for ECR Enhanced scan completion
-echo -e "${BLUE}🔍 Waiting for ECR Enhanced scan...${NC}"
-
 # Wait for ECR Enhanced scan results (like your reference script)
 max_attempts=20
 attempt=0
 success="false"
 
-# echo "  ⏳ Waiting for scan to initialize..."
-# sleep 30
+echo "  ⏳ Waiting for scan to initialize..."
+sleep 20
 
 run_scan_check() {
     aws_cli ecr describe-image-scan-findings \

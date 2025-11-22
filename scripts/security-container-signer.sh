@@ -67,7 +67,10 @@ echo "✅ Docker credentials configured"
 
 # Step 4: Login to ECR using Notation
 echo "📋 Step 4: Authenticating with ECR"
-# Create notation config directory and disable credential helpers
+# Configure Docker to not use credential helpers
+mkdir -p ~/.docker
+echo '{"credsStore":""}' > ~/.docker/config.json
+# Configure notation to use plain text credential storage
 mkdir -p ~/.config/notation
 echo '{"credentialsStore":""}' > ~/.config/notation/config.json
 if [ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ]; then
