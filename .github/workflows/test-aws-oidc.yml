@@ -1,8 +1,21 @@
 name: Test AWS OIDC
-
 on:
   workflow_dispatch:
-
+    inputs:
+      service_name:
+        description: 'Worker service name'
+        required: true
+        type: choice
+        options:
+          - demo-app
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
 permissions:
   id-token: write
   contents: read
@@ -13,14 +26,42 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+
+    - name: Set deployment variables
+      run: |
+        # Set SERVICE_NAME
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          SERVICE_NAME="${{ github.event.inputs.service_name }}"
+        else
+          SERVICE_NAME="demo-app"
+        fi
+        echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_ENV
+        
+        # Set ENVIRONMENT based on branch or manual input
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+        elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          ENVIRONMENT="prod"
+        elif [ "${{ github.ref }}" = "refs/heads/staging" ]; then
+          ENVIRONMENT="stg"
+        else
+          ENVIRONMENT="dev"
+        fi
+        echo "ENVIRONMENT=$ENVIRONMENT" >> $GITHUB_ENV
+        
+        echo "🚀 Deploying: $SERVICE_NAME to $ENVIRONMENT"
     - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-        role-session-name: GitHubActions-DevSecOps-Test
+        role-to-assume: ${{ 
+          env.ENVIRONMENT == 'prod' && secrets.AWS_ROLE_PROD || 
+          env.ENVIRONMENT == 'stg' && secrets.AWS_ROLE_STG || 
+          secrets.AWS_ROLE_DEV 
+        }}
+        role-session-name: GitHubActions-DevSecOps-${{ env.ENVIRONMENT }}-${{ env.SERVICE_NAME }}
         aws-region: us-east-1
         
     - name: Test AWS access
