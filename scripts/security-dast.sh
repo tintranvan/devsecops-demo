@@ -17,15 +17,20 @@ mkdir -p "$REPORT_DIR"
 
 # Step 1: Run OWASP ZAP baseline scan
 echo "📋 Step 1: Running OWASP ZAP baseline scan"
-# Create report directory with secure permissions
-mkdir -p "$REPORT_DIR"
-chmod 755 "$REPORT_DIR"
-docker run --rm -v $(pwd)/$REPORT_DIR:/zap/wrk/:rw \
+# Use temp directory to avoid permission issues
+TEMP_DIR="/tmp/zap-reports-$TIMESTAMP"
+mkdir -p "$TEMP_DIR"
+docker run --rm -v "$TEMP_DIR":/zap/wrk/:rw \
     -t zaproxy/zap-stable zap-baseline.py \
     -t "$TARGET_URL" \
     -J "zap-report-$TIMESTAMP.json" \
     -r "zap-report-$TIMESTAMP.html" \
     -x "zap-report-$TIMESTAMP.xml" || ZAP_EXIT_CODE=$?
+
+# Copy reports to final location
+mkdir -p "$REPORT_DIR"
+cp "$TEMP_DIR"/* "$REPORT_DIR/" 2>/dev/null || true
+rm -rf "$TEMP_DIR"
 
 echo "✅ ZAP scan completed with exit code: ${ZAP_EXIT_CODE:-0}"
 
