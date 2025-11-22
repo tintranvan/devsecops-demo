@@ -149,6 +149,9 @@ send_to_sqs() {
     success_count=0
     failed_count=0
     
+    # Temporarily disable exit on error for SQS sending
+    set +e
+    
     while IFS= read -r finding; do
         # Create SQS message with finding
         message_body=$(echo "$finding" | jq -c .)
@@ -178,6 +181,9 @@ send_to_sqs() {
         # Small delay to avoid throttling
         sleep 0.1
     done < <(jq -c '.Findings[]' "$asff_file")
+    
+    # Re-enable exit on error
+    set -e
     
     echo ""
     echo "📊 SQS Send Summary:"
@@ -497,13 +503,7 @@ EOF
 }
 EOF
     fi
-    
-    echo "✅ ASFF file generated: $(basename "$asff_file")"
-    
-    # Debug: Check how many findings were generated
-    final_findings_count=$(jq '.Findings | length' "$asff_file" 2>/dev/null || echo 0)
-    echo "🔍 Debug: Generated $final_findings_count findings in ASFF file"
-    
+    echo "✅ ASFF file generated: $(basename "$asff_file")"    
     # Send to SQS for Lambda processing
     send_to_sqs "$asff_file"
 }
