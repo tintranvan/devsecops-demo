@@ -11,20 +11,23 @@ echo "════════════════════════�
 
 # Get only ACTIVE CODE_VULNERABILITY findings
 if [ -n "$PROFILE" ] && [ "$PROFILE" != "" ]; then
+    echo "🔍 DEBUG: Using profile: $PROFILE"
     FINDINGS=$(aws inspector2 list-findings \
         --profile $PROFILE \
         --region $REGION \
         --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-        --output json 2>/dev/null || echo '{"findings":[]}')
+        --output json || echo '{"findings":[]}')
 else
+    echo "🔍 DEBUG: Using OIDC (no profile)"
     FINDINGS=$(aws inspector2 list-findings \
         --region $REGION \
         --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-        --output json 2>/dev/null || echo '{"findings":[]}')
+        --output json || echo '{"findings":[]}')
 fi
 
 # Debug: Check if FINDINGS variable is populated
 echo "🔍 DEBUG: FINDINGS variable length: $(echo "$FINDINGS" | jq '.findings | length')"
+echo "🔍 DEBUG: First few chars of FINDINGS: $(echo "$FINDINGS" | head -c 100)"
 
 # Count by severity
 CRITICAL=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "CRITICAL")] | length')
