@@ -111,14 +111,35 @@ aws_cli inspector2 enable --resource-types ECR --region "$AWS_REGION" 2>/dev/nul
     echo "  ℹ️  Inspector ECR already enabled"
 }
 
-# Step 6: Trigger scan
-echo -e "${BLUE}🔍 Triggering Inspector scan...${NC}"
-aws_cli ecr start-image-scan \
-    --repository-name "$ECR_REPOSITORY" \
-    --image-id imageTag="$IMAGE_TAG" \
-    --region "$AWS_REGION" || {
-    echo "  ⚠️  Scan may already be in progress"
-}
+# Step 6: Trigger Inspector Enhanced scan (not basic ECR scan)
+echo -e "${BLUE}🔍 Triggering Inspector Enhanced scan...${NC}"
+
+# Inspector Enhanced scanning is automatic when enabled
+# Just wait for it to complete and get results from Inspector, not ECR
+echo "  ℹ️  Inspector Enhanced scanning runs automatically"
+echo "  ⏳ Waiting for Inspector scan to complete..."
+
+# Wait for Inspector scan results (different API than ECR)
+max_attempts=30
+attempt=0
+
+while [ $attempt -lt $max_attempts ]; do
+    # Check Inspector findings instead of ECR scan status
+    findings_count=$(aws_cli inspector2 list-findings \
+        --filter-criteria '{"ecrImageHash":[{"value":"'$(docker inspect --format='{{.Id}}' "$ECR_URI:$IMAGE_TAG" | cut -d: -f2)'","comparison":"EQUALS"}]}' \
+        --region "$AWS_REGION" \
+        --query 'findings | length' \
+        --output text 2>/dev/null || echo "0")
+    
+    if [ "$findings_count" != "0" ] || [ $attempt -ge 10 ]; then
+        echo "  ✅ Inspector scan completed - found $findings_count findings"
+        break
+    fi
+    
+    echo "  ⏳ Inspector scan in progress... ($((attempt + 1))/$max_attempts)"
+    sleep 30
+    ((attempt++))
+done
 
 # Step 7: Wait for scan completion and get results
 echo -e "${BLUE}⏳ Waiting for scan completion...${NC}"
@@ -150,12 +171,18 @@ if [ $attempt -eq $max_attempts ]; then
     echo -e "${YELLOW}⚠️  Scan timeout, retrieving partial results...${NC}"
 fi
 
-# Step 8: Get scan results
-echo -e "${BLUE}📊 Retrieving scan results...${NC}"
-aws_cli ecr describe-image-scan-findings \
-    --repository-name "$ECR_REPOSITORY" \
-    --image-id imageTag="$IMAGE_TAG" \
-    --region "$AWS_REGION" > "$OUTPUT_DIR/ecr_scan_results_${TIMESTAMP}.json"
+# Step 8: Get Inspector scan results (not ECR results)
+echo -e "${BLUE}📊 Retrieving Inspector scan results...${NC}"
+
+# Get image hash for Inspector query
+IMAGE_HASH=$(docker inspect --format='{{.Id}}' "$ECR_URI:$IMAGE_TAG" | cut -d: -f2)
+
+# Get Inspector findings
+aws_cli inspector2 list-findings \
+    --filter-criteria '{"ecrImageHash":[{"value":"'$IMAGE_HASH'","comparison":"EQUALS"}]}' \
+    --region "$AWS_REGION" > "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
+
+echo "  ✅ Inspector results saved to: inspector_scan_results_${TIMESTAMP}.json"
 
 # Step 9: Analyze results
 analyze_scan_results() {
