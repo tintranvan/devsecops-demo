@@ -23,6 +23,9 @@ else
         --output json 2>/dev/null || echo '{"findings":[]}')
 fi
 
+# Debug: Check if FINDINGS variable is populated
+echo "🔍 DEBUG: FINDINGS variable length: $(echo "$FINDINGS" | jq '.findings | length')"
+
 # Count by severity
 CRITICAL=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "CRITICAL")] | length')
 HIGH=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "HIGH")] | length')
