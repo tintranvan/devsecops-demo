@@ -99,11 +99,9 @@ else
     exit 1
 fi
 
-# Step 4: Push to ECR
-echo -e "${BLUE}📤 Pushing image to ECR...${NC}"
-docker push "$ECR_URI:$IMAGE_TAG"
-
-echo -e "${GREEN}✅ Image pushed successfully: $ECR_URI:$IMAGE_TAG${NC}"
+# Step 4: Skip push (image already pushed by build job)
+echo -e "${BLUE}📤 Skipping push - image already in ECR from build job${NC}"
+echo -e "${GREEN}✅ Using existing image: $ECR_URI:$IMAGE_TAG${NC}"
 
 # Step 5: Enable Inspector scanning
 echo -e "${BLUE}🔧 Enabling Inspector ECR scanning...${NC}"
@@ -119,8 +117,8 @@ max_attempts=20
 attempt=0
 success="false"
 
-echo "  ⏳ Waiting for scan to initialize..."
-sleep 30
+# echo "  ⏳ Waiting for scan to initialize..."
+# sleep 30
 
 run_scan_check() {
     aws_cli ecr describe-image-scan-findings \

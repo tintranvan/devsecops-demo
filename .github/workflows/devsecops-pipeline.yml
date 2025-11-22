@@ -226,6 +226,22 @@ jobs:
       run: |
         docker save ${{ needs.setup.outputs.service_name }}:${{ github.sha }} > /tmp/app-image.tar
         
+    - name: Push to ECR
+      run: |
+        # Configure ECR repository
+        ECR_REPO="${{ needs.setup.outputs.account_id }}.dkr.ecr.${{ needs.setup.outputs.region }}.amazonaws.com/${{ needs.setup.outputs.service_name }}"
+        VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
+        
+        # Login to ECR
+        echo "🔐 Logging into ECR..."
+        aws ecr get-login-password --region ${{ needs.setup.outputs.region }} | docker login --username AWS --password-stdin ${{ needs.setup.outputs.account_id }}.dkr.ecr.${{ needs.setup.outputs.region }}.amazonaws.com
+        
+        # Tag and push image
+        docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
+        docker push ${ECR_REPO}:${VERSION}
+        
+        echo "✅ Image pushed to ECR: ${ECR_REPO}:${VERSION}"
+        
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -258,9 +274,6 @@ jobs:
       with:
         name: build-artifacts-${{ needs.setup.outputs.environment }}
         path: /tmp/
-        
-    - name: Load Docker Image
-      run: docker load < /tmp/app-image.tar
         
     - name: Run Image Security Scanning
       id: image-scan
@@ -314,9 +327,6 @@ jobs:
       with:
         name: build-artifacts-${{ needs.setup.outputs.environment }}
         path: /tmp/
-        
-    - name: Load Docker Image
-      run: docker load < /tmp/app-image.tar
         
     - name: Sign Container Image
       id: container-sign
@@ -381,16 +391,7 @@ jobs:
         ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
         
         # Load Docker image from artifact
-        echo "📥 Loading Docker image..."
-        docker load < /tmp/app-image.tar
-        docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
-        
-        # Login to ECR and push
-        echo "🔐 Logging into ECR..."
-        aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 647272350116.dkr.ecr.us-east-1.amazonaws.com
-        
-        echo "📤 Pushing image to ECR..."
-        docker push ${ECR_REPO}:${VERSION}
+        # Image already pushed by build job, proceed with deployment
         
         # Deploy with Terraform
         echo "🏗️ Generating Terraform configuration..."

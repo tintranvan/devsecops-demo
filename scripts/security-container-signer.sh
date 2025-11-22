@@ -67,6 +67,9 @@ echo "✅ Docker credentials configured"
 
 # Step 4: Login to ECR using Notation
 echo "📋 Step 4: Authenticating with ECR"
+# Create notation config directory and disable credential helpers
+mkdir -p ~/.config/notation
+echo '{"credentialsStore":""}' > ~/.config/notation/config.json
 if [ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ]; then
     aws ecr get-login-password --region $REGION --profile $AWS_PROFILE | \
         $NOTATION_CMD login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
