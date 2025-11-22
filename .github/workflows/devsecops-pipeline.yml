@@ -232,6 +232,8 @@ jobs:
         cache-to: type=gha,mode=max
         load: true
         push: false
+        provenance: true
+        sbom: true
         
     - name: Cleanup Build Files
       run: |
