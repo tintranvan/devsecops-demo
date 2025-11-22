@@ -84,11 +84,10 @@ cd "$BUILD_CONTEXT"
 
 # Get CodeArtifact auth token
 echo -e "${BLUE}🔐 Getting CodeArtifact auth token...${NC}"
-CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+CODEARTIFACT_AUTH_TOKEN=$(aws_cli codeartifact get-authorization-token \
   --domain devsecops-domain \
   --domain-owner "$ACCOUNT_ID" \
   --region "$AWS_REGION" \
-  --profile "$AWS_PROFILE" \
   --query authorizationToken \
   --output text)
 
@@ -115,7 +114,7 @@ echo -e "${GREEN}✅ Image pushed successfully: $ECR_URI:$IMAGE_TAG${NC}"
 
 # Step 5: Enable Inspector scanning
 echo -e "${BLUE}🔧 Enabling Inspector ECR scanning...${NC}"
-aws inspector2 enable --resource-types ECR --region "$AWS_REGION" --profile "$AWS_PROFILE" 2>/dev/null || {
+aws_cli inspector2 enable --resource-types ECR --region "$AWS_REGION" 2>/dev/null || {
     echo "  ℹ️  Inspector ECR already enabled"
 }
 
@@ -135,11 +134,10 @@ max_attempts=30
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    scan_status=$(aws ecr describe-image-scan-findings \
+    scan_status=$(aws_cli ecr describe-image-scan-findings \
         --repository-name "$ECR_REPOSITORY" \
         --image-id imageTag="$IMAGE_TAG" \
         --region "$AWS_REGION" \
-        --profile "$AWS_PROFILE" \
         --query 'imageScanStatus.status' \
         --output text 2>/dev/null || echo "IN_PROGRESS")
     
@@ -162,11 +160,10 @@ fi
 
 # Step 8: Get scan results
 echo -e "${BLUE}📊 Retrieving scan results...${NC}"
-aws ecr describe-image-scan-findings \
+aws_cli ecr describe-image-scan-findings \
     --repository-name "$ECR_REPOSITORY" \
     --image-id imageTag="$IMAGE_TAG" \
-    --region "$AWS_REGION" \
-    --profile "$AWS_PROFILE" > "$OUTPUT_DIR/ecr_scan_results_${TIMESTAMP}.json"
+    --region "$AWS_REGION" > "$OUTPUT_DIR/ecr_scan_results_${TIMESTAMP}.json"
 
 # Step 9: Analyze results
 analyze_scan_results() {
