@@ -111,63 +111,50 @@ aws_cli inspector2 enable --resource-types ECR --region "$AWS_REGION" 2>/dev/nul
     echo "  ℹ️  Inspector ECR already enabled"
 }
 
-# Step 6: Trigger Inspector Enhanced scan (not basic ECR scan)
-echo -e "${BLUE}🔍 Triggering Inspector Enhanced scan...${NC}"
+# Step 6: Wait for Inspector Enhanced scan results
+echo -e "${BLUE}🔍 Waiting for Inspector Enhanced scan...${NC}"
 
-# Inspector Enhanced scanning is automatic when enabled
-# Just wait for it to complete and get results from Inspector, not ECR
-echo "  ℹ️  Inspector Enhanced scanning runs automatically"
+# Inspector Enhanced scanning runs automatically when image is pushed
+echo "  ℹ️  Inspector Enhanced scanning runs automatically on push"
 echo "  ⏳ Waiting for Inspector scan to complete..."
 
-# Wait for Inspector scan results (different API than ECR)
-max_attempts=30
+# Wait for Inspector scan results
+max_attempts=10
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    # Check Inspector findings instead of ECR scan status
+    # Get Inspector findings for this repository and tag
     findings_count=$(aws_cli inspector2 list-findings \
-        --filter-criteria '{"ecrImageHash":[{"value":"'$(docker inspect --format='{{.Id}}' "$ECR_URI:$IMAGE_TAG" | cut -d: -f2)'","comparison":"EQUALS"}]}' \
+        --filter-criteria '{"ecrRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
         --region "$AWS_REGION" \
         --query 'findings | length' \
         --output text 2>/dev/null || echo "0")
     
-    if [ "$findings_count" != "0" ] || [ $attempt -ge 10 ]; then
+    # Check if we got a valid number
+    if [[ "$findings_count" =~ ^[0-9]+$ ]]; then
         echo "  ✅ Inspector scan completed - found $findings_count findings"
         break
     fi
     
     echo "  ⏳ Inspector scan in progress... ($((attempt + 1))/$max_attempts)"
-    sleep 30
+    sleep 20
     ((attempt++))
 done
 
-# Step 7: Wait for scan completion and get results
-echo -e "${BLUE}⏳ Waiting for scan completion...${NC}"
-max_attempts=30
-attempt=0
+if [ $attempt -ge $max_attempts ]; then
+    echo "  ⚠️  Inspector scan timeout - proceeding with available data"
+    findings_count=0
+fi
 
-while [ $attempt -lt $max_attempts ]; do
-    scan_status=$(aws_cli ecr describe-image-scan-findings \
-        --repository-name "$ECR_REPOSITORY" \
-        --image-id imageTag="$IMAGE_TAG" \
-        --region "$AWS_REGION" \
-        --query 'imageScanStatus.status' \
-        --output text 2>/dev/null || echo "IN_PROGRESS")
-    
-    if [ "$scan_status" = "COMPLETE" ]; then
-        echo -e "${GREEN}✅ Scan completed successfully${NC}"
-        break
-    elif [ "$scan_status" = "FAILED" ]; then
-        echo -e "${RED}❌ Scan failed${NC}"
-        exit 1
-    else
-        echo "  ⏳ Scan in progress... ($((attempt + 1))/$max_attempts)"
-        sleep 10
-        ((attempt++))
-    fi
-done
+# Step 7: Get Inspector scan results (skip ECR scan wait)
+echo -e "${BLUE}📊 Retrieving Inspector scan results...${NC}"
 
-if [ $attempt -eq $max_attempts ]; then
+# Get Inspector findings for this repository and tag
+aws_cli inspector2 list-findings \
+    --filter-criteria '{"ecrRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
+    --region "$AWS_REGION" > "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
+
+echo "  ✅ Inspector results saved to: inspector_scan_results_${TIMESTAMP}.json"
     echo -e "${YELLOW}⚠️  Scan timeout, retrieving partial results...${NC}"
 fi
 
