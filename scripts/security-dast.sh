@@ -148,10 +148,10 @@ if [ -f "$ASFF_FILE" ]; then
     success_count=0
     failed_count=0
     
+    set +e  # Disable exit on error for entire loop
     while read -r finding; do
         title=$(echo "$finding" | jq -r '.Title')
         
-        set +e  # Temporarily disable exit on error
         if [ -n "$AWS_PROFILE" ]; then
             ERROR_OUTPUT=$(aws sqs send-message \
                 --queue-url "$SQS_QUEUE_URL" \
@@ -165,7 +165,6 @@ if [ -f "$ASFF_FILE" ]; then
                 --region "$REGION" 2>&1)
         fi
         EXIT_CODE=$?
-        set -e  # Re-enable exit on error
         
         if [ $EXIT_CODE -eq 0 ]; then
             echo "✅ Sent finding to SQS: $title"
@@ -176,6 +175,7 @@ if [ -f "$ASFF_FILE" ]; then
             ((failed_count++))
         fi
     done < <(jq -c '.[]' "$ASFF_FILE")
+    set -e  # Re-enable exit on error
     
     echo ""
     echo "📊 SQS Send Summary:"
