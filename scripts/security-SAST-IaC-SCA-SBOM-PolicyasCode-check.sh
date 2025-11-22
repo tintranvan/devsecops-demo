@@ -16,7 +16,6 @@ else
 fi
 
 echo "🔍 AWS Inspector Code Security Analysis"
-echo "📂 Project: tintranvan/devsecops-demo:main"
 echo "════════════════════════════════════════════════════════════"
 
 # Get only ACTIVE CODE_VULNERABILITY findings
