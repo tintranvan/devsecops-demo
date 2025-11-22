@@ -221,8 +221,8 @@ jobs:
     - name: Build and cache Docker image
       uses: docker/build-push-action@v5
       with:
-        context: .
-        file: Dockerfile
+        context: ./application
+        file: ./application/Dockerfile
         build-args: |
           SERVICE_NAME=${{ needs.setup.outputs.service_name }}
         platforms: linux/amd64
