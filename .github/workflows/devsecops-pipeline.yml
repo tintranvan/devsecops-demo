@@ -406,6 +406,25 @@ jobs:
         SERVICE_NAME_FULL="${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
         CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
         
+        # Debug: Check if cluster exists
+        echo "🔍 Checking cluster: $CLUSTER_NAME"
+        aws ecs describe-clusters --clusters $CLUSTER_NAME --region ${{ env.AWS_REGION }} || {
+          echo "❌ Cluster $CLUSTER_NAME not found"
+          exit 1
+        }
+        
+        # Debug: Check if service exists
+        echo "🔍 Checking service: $SERVICE_NAME_FULL"
+        aws ecs describe-services \
+          --cluster $CLUSTER_NAME \
+          --services $SERVICE_NAME_FULL \
+          --region ${{ env.AWS_REGION }} || {
+          echo "❌ Service $SERVICE_NAME_FULL not found in cluster $CLUSTER_NAME"
+          echo "📋 Available services:"
+          aws ecs list-services --cluster $CLUSTER_NAME --region ${{ env.AWS_REGION }}
+          exit 1
+        }
+        
         # Wait for service to stabilize
         echo "⏳ Waiting for service to stabilize..."
         aws ecs wait services-stable \
