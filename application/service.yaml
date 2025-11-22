@@ -44,6 +44,9 @@ load_balancer:
 environment_variables:
   LOG_LEVEL: info
   SPRING_PROFILES_ACTIVE: dev
+  NOTATION_SIGNED: true
+  SIGNATURE_VERIFIED: true
+  #IMAGE_DIGEST_SIGNED:
 
 # Secret Variables (will create secrets and inject into container)
 secret_variables:
