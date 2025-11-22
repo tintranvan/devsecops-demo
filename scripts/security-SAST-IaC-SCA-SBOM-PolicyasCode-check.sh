@@ -10,7 +10,7 @@ echo "🔍 AWS Inspector Code Security Analysis"
 echo "════════════════════════════════════════════════════════════"
 
 # Get only ACTIVE CODE_VULNERABILITY findings
-if [ -n "$PROFILE" ] && [ "$PROFILE" != "" ]; then
+if [ -n "$PROFILE" ] && [ "$PROFILE" != "" ] && [ "$PROFILE" != "default" ]; then
     echo "🔍 DEBUG: Using profile: $PROFILE"
     FINDINGS=$(aws inspector2 list-findings \
         --profile $PROFILE \
