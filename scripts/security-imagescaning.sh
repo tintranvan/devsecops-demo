@@ -123,12 +123,12 @@ max_attempts=10
 attempt=0
 
 while [ $attempt -lt $max_attempts ]; do
-    # Get Inspector findings for this repository and tag
-    findings_count=$(aws_cli inspector2 list-findings \
-        --filter-criteria '{"ecrRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
-        --region "$AWS_REGION" \
-        --query 'findings | length' \
-        --output text 2>/dev/null || echo "0")
+    # Check if we got a valid number using jq instead of AWS query
+    findings_result=$(aws_cli inspector2 list-findings \
+        --filter-criteria '{"resourceType":[{"value":"AWS_ECR_CONTAINER_IMAGE","comparison":"EQUALS"}],"ecrImageRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
+        --region "$AWS_REGION" 2>/dev/null)
+    
+    findings_count=$(echo "$findings_result" | jq '.findings | length' 2>/dev/null || echo "0")
     
     # Check if we got a valid number
     if [[ "$findings_count" =~ ^[0-9]+$ ]]; then
@@ -151,7 +151,7 @@ echo -e "${BLUE}📊 Retrieving Inspector scan results...${NC}"
 
 # Get Inspector findings for this repository and tag
 aws_cli inspector2 list-findings \
-    --filter-criteria '{"ecrRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
+    --filter-criteria '{"resourceType":[{"value":"AWS_ECR_CONTAINER_IMAGE","comparison":"EQUALS"}],"ecrImageRepositoryName":[{"value":"'$ECR_REPOSITORY'","comparison":"EQUALS"}],"ecrImageTags":[{"value":"'$IMAGE_TAG'","comparison":"EQUALS"}]}' \
     --region "$AWS_REGION" > "$OUTPUT_DIR/inspector_scan_results_${TIMESTAMP}.json"
 
 echo "  ✅ Inspector results saved to: inspector_scan_results_${TIMESTAMP}.json"
@@ -179,12 +179,12 @@ analyze_scan_results() {
     echo "=============================="
     
     if command -v jq &> /dev/null; then
-        # Extract summary
-        total_findings=$(jq '.imageScanFindings.findings | length' "$results_file" 2>/dev/null || echo 0)
-        critical_count=$(jq '[.imageScanFindings.findings[] | select(.severity == "CRITICAL")] | length' "$results_file" 2>/dev/null || echo 0)
-        high_count=$(jq '[.imageScanFindings.findings[] | select(.severity == "HIGH")] | length' "$results_file" 2>/dev/null || echo 0)
-        medium_count=$(jq '[.imageScanFindings.findings[] | select(.severity == "MEDIUM")] | length' "$results_file" 2>/dev/null || echo 0)
-        low_count=$(jq '[.imageScanFindings.findings[] | select(.severity == "LOW")] | length' "$results_file" 2>/dev/null || echo 0)
+        # Extract summary from Inspector format (not ECR format)
+        total_findings=$(jq '.findings | length' "$results_file" 2>/dev/null || echo 0)
+        critical_count=$(jq '[.findings[] | select(.severity == "CRITICAL")] | length' "$results_file" 2>/dev/null || echo 0)
+        high_count=$(jq '[.findings[] | select(.severity == "HIGH")] | length' "$results_file" 2>/dev/null || echo 0)
+        medium_count=$(jq '[.findings[] | select(.severity == "MEDIUM")] | length' "$results_file" 2>/dev/null || echo 0)
+        low_count=$(jq '[.findings[] | select(.severity == "LOW")] | length' "$results_file" 2>/dev/null || echo 0)
         
         echo "📊 Vulnerability Summary:"
         echo "  Critical: $critical_count"
@@ -196,7 +196,7 @@ analyze_scan_results() {
         if [ "$total_findings" -gt 0 ]; then
             echo ""
             echo "🔍 Top 5 Critical/High Vulnerabilities:"
-            jq -r '.imageScanFindings.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "- \(.severity): \(.name) - \(.description)"' "$results_file" 2>/dev/null | head -5
+            jq -r '.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "- \(.severity): \(.title) - \(.description)"' "$results_file" 2>/dev/null | head -5
         fi
         
         # Generate summary report
@@ -232,7 +232,7 @@ fi)
 
 ## Top Vulnerabilities
 
-$(jq -r '.imageScanFindings.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "### \(.severity): \(.name)\n\n**Description:** \(.description)\n\n**URI:** \(.uri)\n\n---\n"' "$results_file" 2>/dev/null | head -20)
+$(jq -r '.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH") | "### \(.severity): \(.title)\n\n**Description:** \(.description)\n\n**Finding ARN:** \(.findingArn)\n\n---\n"' "$results_file" 2>/dev/null | head -20)
 
 ## Files Generated
 
