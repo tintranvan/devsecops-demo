@@ -82,480 +82,479 @@ jobs:
         aws-region: ${{ env.AWS_REGION }}
 
   # 2. Pre-Build Security Scans (Parallel)
-  # sast-security-scan:
-  #   name: 🔍 SAST/IaC/SCA/SBOM Security Scan
-  #   runs-on: ubuntu-latest
-  #   needs: setup
-  #   outputs:
-  #     sast-outcome: ${{ steps.sast-scan.outcome }}
+  sast-security-scan:
+    name: 🔍 SAST/IaC/SCA/SBOM Security Scan
+    runs-on: ubuntu-latest
+    needs: setup
+    outputs:
+      sast-outcome: ${{ steps.sast-scan.outcome }}
     
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  #   - name: Configure AWS credentials
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-  #       role-session-name: GitHubActions-SAST-${{ needs.setup.outputs.environment }}
-  #       aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-SAST-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
         
-  #   - name: Run SAST/IaC/SCA/SBOM/Policy Check
-  #     id: sast-scan
-  #     run: |
-  #       if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
-  #         chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-  #         ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
-  #       else
-  #         echo "⚠️ SAST script not found, skipping..."
-  #       fi
-  #     continue-on-error: true
+    - name: Run SAST/IaC/SCA/SBOM/Policy Check
+      id: sast-scan
+      run: |
+        if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
+          chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
+          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
+        else
+          echo "⚠️ SAST script not found, skipping..."
+        fi
+      continue-on-error: true
       
-  #   - name: Check SAST Results
-  #     run: |
-  #       if [ "${{ steps.sast-scan.outcome }}" = "failure" ]; then
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "⚠️ SAST FAILED in DEV - Continuing with warnings"
-  #           echo "::warning title=SAST Security Issues::Security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
-  #         else
-  #           echo "🚨 SAST FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-  #           exit 1
-  #         fi
-  #       else
-  #         echo "✅ SAST passed successfully"
-  #       fi
+    - name: Check SAST Results
+      run: |
+        if [ "${{ steps.sast-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ SAST FAILED in DEV - Continuing with warnings"
+            echo "::warning title=SAST Security Issues::Security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 SAST FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ SAST passed successfully"
+        fi
 
-  # dockerfile-security-scan:
-  #   name: 🐳 Dockerfile Security Scan
-  #   runs-on: ubuntu-latest
-  #   needs: setup
-  #   outputs:
-  #     dockerfile-outcome: ${{ steps.dockerfile-scan.outcome }}
+  dockerfile-security-scan:
+    name: 🐳 Dockerfile Security Scan
+    runs-on: ubuntu-latest
+    needs: setup
+    outputs:
+      dockerfile-outcome: ${{ steps.dockerfile-scan.outcome }}
     
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  #   - name: Configure AWS credentials
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-  #       role-session-name: GitHubActions-Dockerfile-${{ needs.setup.outputs.environment }}
-  #       aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-Dockerfile-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
         
-  #   - name: Setup Docker
-  #     uses: docker/setup-buildx-action@v3
+    - name: Setup Docker
+      uses: docker/setup-buildx-action@v3
       
-  #   - name: Run Dockerfile Security Validation
-  #     id: dockerfile-scan
-  #     run: |
-  #       chmod +x ./scripts/security-inspector-dockerfile-container-validation.sh
-  #       # Use "none" for OIDC like SAST script
-  #       ./scripts/security-inspector-dockerfile-container-validation.sh none ${{ env.AWS_REGION }}
-  #     continue-on-error: true
+    - name: Run Dockerfile Security Validation
+      id: dockerfile-scan
+      run: |
+        chmod +x ./scripts/security-inspector-dockerfile-container-validation.sh
+        # Use "none" for OIDC like SAST script
+        ./scripts/security-inspector-dockerfile-container-validation.sh none ${{ env.AWS_REGION }}
+      continue-on-error: true
       
-  #   - name: Check Dockerfile Results
-  #     run: |
-  #       if [ "${{ steps.dockerfile-scan.outcome }}" = "failure" ]; then
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "⚠️ DOCKERFILE SCAN FAILED in DEV - Continuing with warnings"
-  #           echo "::warning title=Dockerfile Security Issues::Dockerfile security issues detected in dev environment. Review and fix before promoting to staging."
-  #         else
-  #           echo "🚨 DOCKERFILE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-  #           exit 1
-  #         fi
-  #       else
-  #         echo "✅ Dockerfile scan passed successfully"
-  #       fi
+    - name: Check Dockerfile Results
+      run: |
+        if [ "${{ steps.dockerfile-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ DOCKERFILE SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Dockerfile Security Issues::Dockerfile security issues detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 DOCKERFILE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Dockerfile scan passed successfully"
+        fi
 
-  # 3. Build & Package
-  # build:
-  #   name: 🏗️ Build & Package
-  #   runs-on: ubuntu-latest
-  #   #needs: [setup, sast-security-scan, dockerfile-security-scan]
-  #   needs: [setup]
-  #   if: always() && (needs.sast-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.dockerfile-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
+  3. Build & Package
+  build:
+    name: 🏗️ Build & Package
+    runs-on: ubuntu-latest
+    needs: [setup, sast-security-scan, dockerfile-security-scan]
+    #needs: [setup]
+    if: always() && (needs.sast-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.dockerfile-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
     
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  #   - name: Configure AWS credentials
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-  #       role-session-name: GitHubActions-Build-${{ needs.setup.outputs.environment }}
-  #       aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-Build-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
       
-  #   - name: Setup Docker
-  #     uses: docker/setup-buildx-action@v3
+    - name: Setup Docker
+      uses: docker/setup-buildx-action@v3
       
-  #   - name: Build Application
-  #     run: |
-  #       echo "🏗️ Building application for ${{ needs.setup.outputs.service_name }}"
+    - name: Build Application
+      run: |
+        echo "🏗️ Building application for ${{ needs.setup.outputs.service_name }}"
         
-  #       # Check AWS credentials
-  #       echo "🔍 Checking AWS credentials..."
-  #       aws sts get-caller-identity
+        # Check AWS credentials
+        echo "🔍 Checking AWS credentials..."
+        aws sts get-caller-identity
         
-  #       # Get CodeArtifact auth token
-  #       echo "🔐 Getting CodeArtifact auth token..."
-  #       CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
-  #         --domain devsecops-domain \
-  #         --domain-owner 647272350116 \
-  #         --region us-east-1 \
-  #         --query authorizationToken \
-  #         --output text)
+        # Get CodeArtifact auth token
+        echo "🔐 Getting CodeArtifact auth token..."
+        CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+          --domain devsecops-domain \
+          --domain-owner 647272350116 \
+          --region us-east-1 \
+          --query authorizationToken \
+          --output text)
         
-  #       # Create temporary pip.conf
-  #       echo "📝 Creating temporary pip.conf..."
-  #       cd application
-  #       cat > pip.conf << EOF
-  #       [global]
-  #       index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-647272350116.d.codeartifact.us-east-1.amazonaws.com/pypi/python-packages/simple/
-  #       EOF
+        # Create temporary pip.conf
+        echo "📝 Creating temporary pip.conf..."
+        cd application
+        cat > pip.conf << EOF
+        [global]
+        index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-647272350116.d.codeartifact.us-east-1.amazonaws.com/pypi/python-packages/simple/
+        EOF
         
-  #       # Build Docker image
-  #       docker build --platform linux/amd64 -f Dockerfile -t ${{ needs.setup.outputs.service_name }}:${{ github.sha }} .
+        # Build Docker image
+        docker build --platform linux/amd64 -f Dockerfile -t ${{ needs.setup.outputs.service_name }}:${{ github.sha }} .
         
-  #       # Cleanup
-  #       rm -f pip.conf
-  #       cd ..
+        # Cleanup
+        rm -f pip.conf
+        cd ..
         
-  #       # Clear token from memory
-  #       unset CODEARTIFACT_AUTH_TOKEN
+        # Clear token from memory
+        unset CODEARTIFACT_AUTH_TOKEN
         
-  #   - name: Push to ECR
-  #     run: |
-  #       # Configure ECR repository (use existing repo)
-  #       ACCOUNT_ID="647272350116"
-  #       REGION="us-east-1"
-  #       ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
-  #       VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
+    - name: Push to ECR
+      run: |
+        # Configure ECR repository (use existing repo)
+        ACCOUNT_ID="647272350116"
+        REGION="us-east-1"
+        ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
+        VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
         
-  #       # Login to ECR
-  #       echo "🔐 Logging into ECR..."
-  #       aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+        # Login to ECR
+        echo "🔐 Logging into ECR..."
+        aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
         
-  #       # Tag and push image
-  #       docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
-  #       docker push ${ECR_REPO}:${VERSION}
+        # Tag and push image
+        docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
+        docker push ${ECR_REPO}:${VERSION}
         
-  #       echo "✅ Image pushed to ECR: ${ECR_REPO}:${VERSION}"
+        echo "✅ Image pushed to ECR: ${ECR_REPO}:${VERSION}"
         
-  # 4. Post-Build Security Scans (Parallel)
-  # image-security-scan:
-  #   name: 🔒 Image Security Scan
-  #   runs-on: ubuntu-latest
-  #   needs: [setup, build]
-  #   if: always() && needs.build.result == 'success'
-  #   outputs:
-  #     image-outcome: ${{ steps.image-scan.outcome }}
+  4. Post-Build Security Scans (Parallel)
+  image-security-scan:
+    name: 🔒 Image Security Scan
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    if: always() && needs.build.result == 'success'
+    outputs:
+      image-outcome: ${{ steps.image-scan.outcome }}
     
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  #   - name: Configure AWS credentials
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-  #       role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
-  #       aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
         
         
-  #   - name: Run Image Security Scanning
-  #     id: image-scan
-  #     run: |
-  #       if [ -f "./scripts/security-imagescaning.sh" ]; then
-  #         chmod +x ./scripts/security-imagescaning.sh
-  #         # Set environment variables that the script expects
-  #         export ENVIRONMENT=${{ needs.setup.outputs.environment }}
-  #         export IMAGE_TAG="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
-  #         ./scripts/security-imagescaning.sh
-  #       else
-  #         echo "⚠️ Image scanning script not found, skipping..."
-  #       fi
-  #     continue-on-error: true
+    - name: Run Image Security Scanning
+      id: image-scan
+      run: |
+        if [ -f "./scripts/security-imagescaning.sh" ]; then
+          chmod +x ./scripts/security-imagescaning.sh
+          # Set environment variables that the script expects
+          export ENVIRONMENT=${{ needs.setup.outputs.environment }}
+          export IMAGE_TAG="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
+          ./scripts/security-imagescaning.sh
+        else
+          echo "⚠️ Image scanning script not found, skipping..."
+        fi
+      continue-on-error: true
       
-  #   - name: Check Image Scan Results
-  #     run: |
-  #       if [ "${{ steps.image-scan.outcome }}" = "failure" ]; then
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "⚠️ IMAGE SCAN FAILED in DEV - Continuing with warnings"
-  #           echo "::warning title=Image Security Issues::Container image security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
-  #         else
-  #           echo "🚨 IMAGE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-  #           exit 1
-  #         fi
-  #       else
-  #         echo "✅ Image scan passed successfully"
-  #       fi
+    - name: Check Image Scan Results
+      run: |
+        if [ "${{ steps.image-scan.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ IMAGE SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Image Security Issues::Container image security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
+          else
+            echo "🚨 IMAGE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Image scan passed successfully"
+        fi
 
-  # container-signing:
-  #   name: ✍️ Container Image Signing
-  #   runs-on: ubuntu-latest
-  #   needs: [setup, build]
-  #   if: always() && needs.build.result == 'success'
-  #   outputs:
-  #     signing-outcome: ${{ steps.container-sign.outcome }}
+  container-signing:
+    name: ✍️ Container Image Signing
+    runs-on: ubuntu-latest
+    needs: [setup, build]
+    if: always() && needs.build.result == 'success'
+    outputs:
+      signing-outcome: ${{ steps.container-sign.outcome }}
     
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  #   - name: Configure AWS credentials
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-  #       role-session-name: GitHubActions-Signing-${{ needs.setup.outputs.environment }}
-  #       aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-Signing-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
 
         
-  #   - name: Sign Container Image
-  #     id: container-sign
-  #     run: |
-  #       if [ -f "./scripts/security-container-signer.sh" ]; then
-  #         chmod +x ./scripts/security-container-signer.sh
-  #         # Script expects: ./script.sh [image_name] [profile_name] [region]
-  #         IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
-  #         ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
-  #       else
-  #         echo "⚠️ Container signing script not found, skipping..."
-  #       fi
-  #     continue-on-error: true
+    - name: Sign Container Image
+      id: container-sign
+      run: |
+        if [ -f "./scripts/security-container-signer.sh" ]; then
+          chmod +x ./scripts/security-container-signer.sh
+          # Script expects: ./script.sh [image_name] [profile_name] [region]
+          IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
+          ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
+        else
+          echo "⚠️ Container signing script not found, skipping..."
+        fi
+      continue-on-error: true
       
-  #   - name: Check Container Signing Results
-  #     run: |
-  #       if [ "${{ steps.container-sign.outcome }}" = "failure" ]; then
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "⚠️ CONTAINER SIGNING FAILED in DEV - Continuing with warnings"
-  #           echo "::warning title=Container Signing Issues::Container signing failed in dev environment. Review signing configuration before promoting to staging."
-  #         else
-  #           echo "🚨 CONTAINER SIGNING FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-  #           exit 1
-  #         fi
-  #       else
-  #         echo "✅ Container signing passed successfully"
-  #       fi
+    - name: Check Container Signing Results
+      run: |
+        if [ "${{ steps.container-sign.outcome }}" = "failure" ]; then
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "⚠️ CONTAINER SIGNING FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Container Signing Issues::Container signing failed in dev environment. Review signing configuration before promoting to staging."
+          else
+            echo "🚨 CONTAINER SIGNING FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Container signing passed successfully"
+        fi
 
-  # 5. Deploy
-  # deploy:
-  #   name: 🚀 Deploy to ${{ needs.setup.outputs.environment }}
-  #   runs-on: ubuntu-latest
-  #   # needs: [setup, build, image-security-scan, container-signing]
-  #   needs: [setup, build]
-  #   if: always() && needs.build.result == 'success' && (needs.image-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.container-signing.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
-  #   environment: ${{ needs.setup.outputs.environment }}
+  5. Deploy
+  deploy:
+    name: 🚀 Deploy to ${{ needs.setup.outputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [setup, build, image-security-scan, container-signing]
+    #needs: [setup, build]
+    if: always() && needs.build.result == 'success' && (needs.image-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.container-signing.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
+    environment: ${{ needs.setup.outputs.environment }}
     
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
       
-  #   - name: Configure AWS credentials
-  #     uses: aws-actions/configure-aws-credentials@v4
-  #     with:
-  #       role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-  #       role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
-  #       aws-region: ${{ env.AWS_REGION }}
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
                 
-  #   - name: Setup Terraform
-  #     uses: hashicorp/setup-terraform@v3
-  #     with:
-  #       terraform_version: "1.5.0"
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: "1.5.0"
         
-  #   - name: Deploy Application
-  #     id: deploy
-  #     run: |
-  #       echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
+    - name: Deploy Application
+      id: deploy
+      run: |
+        echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
         
-  #       # Set deployment variables
-  #       SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
-  #       ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-  #       VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-  #       SERVICE_NAME_FULL="devsecops-$ENVIRONMENT-$SERVICE_NAME"
-  #       CLUSTER_NAME="devsecops-$ENVIRONMENT-cluster"
+        # Set deployment variables
+        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
+        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
+        SERVICE_NAME_FULL="devsecops-$ENVIRONMENT-$SERVICE_NAME"
+        CLUSTER_NAME="devsecops-$ENVIRONMENT-cluster"
         
-  #       # Save current task definition for rollback
-  #       echo "💾 Saving current state for rollback..."
-  #       PREVIOUS_TASK_DEF=$(aws ecs describe-services \
-  #           --cluster $CLUSTER_NAME \
-  #           --services $SERVICE_NAME_FULL \
-  #           --region ${{ env.AWS_REGION }} \
-  #           --query 'services[0].taskDefinition' \
-  #           --output text 2>/dev/null || echo "")
+        # Save current task definition for rollback
+        echo "💾 Saving current state for rollback..."
+        PREVIOUS_TASK_DEF=$(aws ecs describe-services \
+            --cluster $CLUSTER_NAME \
+            --services $SERVICE_NAME_FULL \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].taskDefinition' \
+            --output text 2>/dev/null || echo "")
         
         
-  #       # Continue with deployment...
-  #       # Image already pushed by build job, proceed with deployment
+        # Continue with deployment...
+        # Image already pushed by build job, proceed with deployment
         
-  #       # Deploy with Terraform
-  #       echo "🏗️ Generating Terraform configuration..."
-  #       python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
+        # Deploy with Terraform
+        echo "🏗️ Generating Terraform configuration..."
+        python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
         
-  #       echo "🌍 Deploying infrastructure..."
-  #       cd application/infrastructure
-  #       terraform init
-  #       terraform plan -out=tfplan
-  #       terraform apply tfplan
+        echo "🌍 Deploying infrastructure..."
+        cd application/infrastructure
+        terraform init
+        terraform plan -out=tfplan
+        terraform apply tfplan
         
-  #       echo "✅ Deployment completed successfully"
+        echo "✅ Deployment completed successfully"
         
-  #   - name: Health Check
-  #     id: healthcheck
-  #     run: |
-  #       echo "🏥 Starting health check..."
-  #       SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
-  #       CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
+    - name: Health Check
+      id: healthcheck
+      run: |
+        echo "🏥 Starting health check..."
+        SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
+        CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
         
-  #       # Health check with rollback
-  #       echo "🏥 Starting health check (5 minutes max)..."
-  #       for i in {1..30}; do  # 5 minutes max (30 * 10s)
-  #           echo "  Health check attempt $i/30..."
-  #           sleep 10
+        # Health check with rollback
+        echo "🏥 Starting health check (5 minutes max)..."
+        for i in {1..30}; do  # 5 minutes max (30 * 10s)
+            echo "  Health check attempt $i/30..."
+            sleep 10
             
-  #           SERVICE_STATUS=$(aws ecs describe-services \
-  #               --cluster $CLUSTER_NAME \
-  #               --services $SERVICE_NAME_FULL \
-  #               --region ${{ env.AWS_REGION }} \
-  #               --query 'services[0].runningCount' \
-  #               --output text)
+            SERVICE_STATUS=$(aws ecs describe-services \
+                --cluster $CLUSTER_NAME \
+                --services $SERVICE_NAME_FULL \
+                --region ${{ env.AWS_REGION }} \
+                --query 'services[0].runningCount' \
+                --output text)
             
-  #           DESIRED_COUNT=$(aws ecs describe-services \
-  #               --cluster $CLUSTER_NAME \
-  #               --services $SERVICE_NAME_FULL \
-  #               --region ${{ env.AWS_REGION }} \
-  #               --query 'services[0].desiredCount' \
-  #               --output text)
+            DESIRED_COUNT=$(aws ecs describe-services \
+                --cluster $CLUSTER_NAME \
+                --services $SERVICE_NAME_FULL \
+                --region ${{ env.AWS_REGION }} \
+                --query 'services[0].desiredCount' \
+                --output text)
 
-  #           if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
-  #               # Check deployment status
-  #               DEPLOYMENT_STATUS=$(aws ecs describe-services \
-  #                   --cluster $CLUSTER_NAME \
-  #                   --services $SERVICE_NAME_FULL \
-  #                   --region ${{ env.AWS_REGION }} \
-  #                   --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
-  #                   --output text)
+            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
+                # Check deployment status
+                DEPLOYMENT_STATUS=$(aws ecs describe-services \
+                    --cluster $CLUSTER_NAME \
+                    --services $SERVICE_NAME_FULL \
+                    --region ${{ env.AWS_REGION }} \
+                    --query 'services[0].deployments[?status==`PRIMARY`].rolloutState' \
+                    --output text)
                 
-  #               if [ "$DEPLOYMENT_STATUS" = "COMPLETED" ]; then
-  #                   echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
-  #                   echo "✅ Deployment completed successfully"
-  #                   echo "health_status=success" >> $GITHUB_OUTPUT
-  #                   break
-  #               else
-  #                   echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
-  #               fi
-  #           else
-  #               echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
-  #           fi
+                if [ "$DEPLOYMENT_STATUS" = "COMPLETED" ]; then
+                    echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
+                    echo "✅ Deployment completed successfully"
+                    echo "health_status=success" >> $GITHUB_OUTPUT
+                    break
+                else
+                    echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
+                fi
+            else
+                echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
+            fi
             
-  #           # If this is the last attempt, prepare for rollback
-  #           if [ $i -eq 30 ]; then
-  #               echo "❌ Health check failed after 30 attempts"
+            # If this is the last attempt, prepare for rollback
+            if [ $i -eq 30 ]; then
+                echo "❌ Health check failed after 30 attempts"
                 
-  #               if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
-  #                   echo "🔄 Rolling back to previous task definition..."
+                if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+                    echo "🔄 Rolling back to previous task definition..."
                     
-  #                   aws ecs update-service \
-  #                       --cluster $CLUSTER_NAME \
-  #                       --service $SERVICE_NAME_FULL \
-  #                       --task-definition $PREVIOUS_TASK_DEF \
-  #                       --region ${{ env.AWS_REGION }} >/dev/null
+                    aws ecs update-service \
+                        --cluster $CLUSTER_NAME \
+                        --service $SERVICE_NAME_FULL \
+                        --task-definition $PREVIOUS_TASK_DEF \
+                        --region ${{ env.AWS_REGION }} >/dev/null
                         
-  #                   echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
-  #               fi
+                    echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
+                fi
                 
-  #               echo "health_status=failed" >> $GITHUB_OUTPUT
-  #               exit 1
-  #           fi
-  #       done
+                echo "health_status=failed" >> $GITHUB_OUTPUT
+                exit 1
+            fi
+        done
         
-  #       # Check service health
-  #       RUNNING_COUNT=$(aws ecs describe-services \
-  #         --cluster $CLUSTER_NAME \
-  #         --services $SERVICE_NAME_FULL \
-  #         --region ${{ env.AWS_REGION }} \
-  #         --query 'services[0].runningCount' \
-  #         --output text)
+        # Check service health
+        RUNNING_COUNT=$(aws ecs describe-services \
+          --cluster $CLUSTER_NAME \
+          --services $SERVICE_NAME_FULL \
+          --region ${{ env.AWS_REGION }} \
+          --query 'services[0].runningCount' \
+          --output text)
         
-  #       DESIRED_COUNT=$(aws ecs describe-services \
-  #         --cluster $CLUSTER_NAME \
-  #         --services $SERVICE_NAME_FULL \
-  #         --region ${{ env.AWS_REGION }} \
-  #         --query 'services[0].desiredCount' \
-  #         --output text)
+        DESIRED_COUNT=$(aws ecs describe-services \
+          --cluster $CLUSTER_NAME \
+          --services $SERVICE_NAME_FULL \
+          --region ${{ env.AWS_REGION }} \
+          --query 'services[0].desiredCount' \
+          --output text)
         
-  #       echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
+        echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
         
-  #       if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
-  #         echo "✅ Health check passed"
-  #         echo "health_status=success" >> $GITHUB_OUTPUT
-  #       else
-  #         echo "❌ Health check failed"
-  #         echo "health_status=failed" >> $GITHUB_OUTPUT
-  #         exit 1
-  #       fi
+        if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
+          echo "✅ Health check passed"
+          echo "health_status=success" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Health check failed"
+          echo "health_status=failed" >> $GITHUB_OUTPUT
+          exit 1
+        fi
         
-  #   - name: Rollback on Health Check Failure
-  #     if: failure() && steps.deploy.outputs.previous_task_def != ''
-  #     run: |
-  #       echo "🔄 Health check failed, rolling back..."
-  #       aws ecs update-service \
-  #         --cluster ${{ steps.deploy.outputs.cluster_name }} \
-  #         --service ${{ steps.deploy.outputs.service_name_full }} \
-  #         --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-  #         --region ${{ env.AWS_REGION }}
+    - name: Rollback on Health Check Failure
+      if: failure() && steps.deploy.outputs.previous_task_def != ''
+      run: |
+        echo "🔄 Health check failed, rolling back..."
+        aws ecs update-service \
+          --cluster ${{ steps.deploy.outputs.cluster_name }} \
+          --service ${{ steps.deploy.outputs.service_name_full }} \
+          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
+          --region ${{ env.AWS_REGION }}
         
-  #       # Wait for rollback to complete
-  #       aws ecs wait services-stable \
-  #         --cluster ${{ steps.deploy.outputs.cluster_name }} \
-  #         --services ${{ steps.deploy.outputs.service_name_full }} \
-  #         --region ${{ env.AWS_REGION }}
+        # Wait for rollback to complete
+        aws ecs wait services-stable \
+          --cluster ${{ steps.deploy.outputs.cluster_name }} \
+          --services ${{ steps.deploy.outputs.service_name_full }} \
+          --region ${{ env.AWS_REGION }}
         
-  #       echo "✅ Rollback completed"
+        echo "✅ Rollback completed"
         
-  #   - name: Rollback on Failure
-  #     if: failure() && steps.deploy.outputs.previous_task_def != ''
-  #     run: |
-  #       echo "🔄 Rolling back to previous task definition..."
-  #       aws ecs update-service \
-  #         --cluster ${{ steps.deploy.outputs.cluster_name }} \
-  #         --service ${{ steps.deploy.outputs.service_name_full }} \
-  #         --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-  #         --region ${{ env.AWS_REGION }}
-  #       echo "✅ Rollback completed"
+    - name: Rollback on Failure
+      if: failure() && steps.deploy.outputs.previous_task_def != ''
+      run: |
+        echo "🔄 Rolling back to previous task definition..."
+        aws ecs update-service \
+          --cluster ${{ steps.deploy.outputs.cluster_name }} \
+          --service ${{ steps.deploy.outputs.service_name_full }} \
+          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
+          --region ${{ env.AWS_REGION }}
+        echo "✅ Rollback completed"
         
-  #       # Set deployment variables
-  #       SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
-  #       ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-  #       VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-  #       ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
+        # Set deployment variables
+        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
+        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
+        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
+        ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
         
-  #       # Load Docker image from artifact
-  #       # Image already pushed by build job, proceed with deployment
+        # Load Docker image from artifact
+        # Image already pushed by build job, proceed with deployment
         
-  #       # Deploy with Terraform
-  #       echo "🏗️ Generating Terraform configuration..."
-  #       NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
-  #       python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
+        # Deploy with Terraform
+        echo "🏗️ Generating Terraform configuration..."
+        NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
+        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
         
-  #       echo "🌍 Deploying infrastructure..."
-  #       if [ -d "application/infrastructure" ]; then
-  #         cd application/infrastructure
-  #         terraform init -reconfigure
-  #         terraform apply -auto-approve
-  #       fi
+        echo "🌍 Deploying infrastructure..."
+        if [ -d "application/infrastructure" ]; then
+          cd application/infrastructure
+          terraform init -reconfigure
+          terraform apply -auto-approve
+        fi
         
-  #       echo "✅ Deployment completed successfully!"
-  #       echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
+        echo "✅ Deployment completed successfully!"
+        echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
 
   # 6. Post-Deploy Security
   dast-security-scan:
     name: 🕷️ DAST Security Scan
     runs-on: ubuntu-latest
-    #needs: [setup, deploy]
-    needs: [setup]
-    #if: always() && needs.deploy.result == 'success'
+    needs: [setup, deploy]
+    if: always() && needs.deploy.result == 'success'
     outputs:
       dast-outcome: ${{ steps.dast-scan.outcome }}
     
@@ -608,88 +607,88 @@ jobs:
         retention-days: 30
 
   # Security Summary
-  # security-summary:
-  #   name: 📊 Security Summary
-  #   runs-on: ubuntu-latest
-  #   needs: [setup, sast-security-scan, dockerfile-security-scan, image-security-scan, container-signing, dast-security-scan]
-  #   if: always()
+  security-summary:
+    name: 📊 Security Summary
+    runs-on: ubuntu-latest
+    needs: [setup, sast-security-scan, dockerfile-security-scan, image-security-scan, container-signing, dast-security-scan]
+    if: always()
     
-  #   steps:
-  #   - name: Generate Security Summary
-  #     run: |
-  #       echo "# 🛡️ DevSecOps Security Pipeline Results" >> $GITHUB_STEP_SUMMARY
-  #       echo "" >> $GITHUB_STEP_SUMMARY
-  #       echo "## 📋 Environment: ${{ needs.setup.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
-  #       echo "## 🎯 Service: ${{ needs.setup.outputs.service_name }}" >> $GITHUB_STEP_SUMMARY
-  #       echo "" >> $GITHUB_STEP_SUMMARY
-  #       echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+    steps:
+    - name: Generate Security Summary
+      run: |
+        echo "# 🛡️ DevSecOps Security Pipeline Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📋 Environment: ${{ needs.setup.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "## 🎯 Service: ${{ needs.setup.outputs.service_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
         
-  #       # SAST Results - based on step outcome, not job result
-  #       if [ "${{ needs.sast-security-scan.outputs.sast-outcome }}" = "success" ]; then
-  #         echo "- ✅ **SAST/IaC/SCA/SBOM**: PASSED" >> $GITHUB_STEP_SUMMARY
-  #       else
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "- ⚠️ **SAST/IaC/SCA/SBOM**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-  #         else
-  #           echo "- 🚨 **SAST/IaC/SCA/SBOM**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-  #         fi
-  #       fi
+        # SAST Results - based on step outcome, not job result
+        if [ "${{ needs.sast-security-scan.outputs.sast-outcome }}" = "success" ]; then
+          echo "- ✅ **SAST/IaC/SCA/SBOM**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **SAST/IaC/SCA/SBOM**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **SAST/IaC/SCA/SBOM**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
         
-  #       # Dockerfile Results - based on step outcome
-  #       if [ "${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}" = "success" ]; then
-  #         echo "- ✅ **Dockerfile Security**: PASSED" >> $GITHUB_STEP_SUMMARY
-  #       else
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "- ⚠️ **Dockerfile Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-  #         else
-  #           echo "- 🚨 **Dockerfile Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-  #         fi
-  #       fi
-  #       # Image Security Results - based on step outcome
-  #       if [ "${{ needs.image-security-scan.outputs.image-outcome }}" = "success" ]; then
-  #         echo "- ✅ **Image Security**: PASSED" >> $GITHUB_STEP_SUMMARY
-  #       else
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "- ⚠️ **Image Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-  #         else
-  #           echo "- 🚨 **Image Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-  #         fi
-  #       fi
+        # Dockerfile Results - based on step outcome
+        if [ "${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}" = "success" ]; then
+          echo "- ✅ **Dockerfile Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Dockerfile Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Dockerfile Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
+        # Image Security Results - based on step outcome
+        if [ "${{ needs.image-security-scan.outputs.image-outcome }}" = "success" ]; then
+          echo "- ✅ **Image Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Image Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Image Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
         
-  #       # Container Signing Results - based on step outcome
-  #       if [ "${{ needs.container-signing.outputs.signing-outcome }}" = "success" ]; then
-  #         echo "- ✅ **Container Signing**: PASSED" >> $GITHUB_STEP_SUMMARY
-  #       else
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "- ⚠️ **Container Signing**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-  #         else
-  #           echo "- 🚨 **Container Signing**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-  #         fi
-  #       fi
+        # Container Signing Results - based on step outcome
+        if [ "${{ needs.container-signing.outputs.signing-outcome }}" = "success" ]; then
+          echo "- ✅ **Container Signing**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **Container Signing**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **Container Signing**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
         
-  #       # DAST Results - based on step outcome
-  #       if [ "${{ needs.dast-security-scan.outputs.dast-outcome }}" = "success" ]; then
-  #         echo "- ✅ **DAST Security**: PASSED" >> $GITHUB_STEP_SUMMARY
-  #       else
-  #         if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #           echo "- ⚠️ **DAST Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
-  #         else
-  #           echo "- 🚨 **DAST Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
-  #         fi
-  #       fi
+        # DAST Results - based on step outcome
+        if [ "${{ needs.dast-security-scan.outputs.dast-outcome }}" = "success" ]; then
+          echo "- ✅ **DAST Security**: PASSED" >> $GITHUB_STEP_SUMMARY
+        else
+          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+            echo "- ⚠️ **DAST Security**: FAILED (Dev - Warnings Only)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- 🚨 **DAST Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
+          fi
+        fi
         
-  #       echo "" >> $GITHUB_STEP_SUMMARY
-  #       echo "## 🎯 Security Policy" >> $GITHUB_STEP_SUMMARY
-  #       if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-  #         echo "**DEV Environment**: Security issues show as warnings - deployment continues" >> $GITHUB_STEP_SUMMARY
-  #         echo "⚠️ **Action Required**: Fix all security issues before promoting to staging" >> $GITHUB_STEP_SUMMARY
-  #       else
-  #         echo "**${{ needs.setup.outputs.environment }} Environment**: Security issues block deployment" >> $GITHUB_STEP_SUMMARY
-  #         echo "🚨 **Zero Tolerance**: All security issues must be resolved" >> $GITHUB_STEP_SUMMARY
-  #       fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🎯 Security Policy" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
+          echo "**DEV Environment**: Security issues show as warnings - deployment continues" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Action Required**: Fix all security issues before promoting to staging" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**${{ needs.setup.outputs.environment }} Environment**: Security issues block deployment" >> $GITHUB_STEP_SUMMARY
+          echo "🚨 **Zero Tolerance**: All security issues must be resolved" >> $GITHUB_STEP_SUMMARY
+        fi
         
-  #       echo "" >> $GITHUB_STEP_SUMMARY
-  #       echo "## 🔗 Security Hub Integration" >> $GITHUB_STEP_SUMMARY
-  #       echo "All security findings have been automatically sent to AWS Security Hub via SQS-Lambda pipeline." >> $GITHUB_STEP_SUMMARY
-  #       echo "" >> $GITHUB_STEP_SUMMARY
-  #       echo "🔗 [View Security Hub Console](https://us-east-1.console.aws.amazon.com/securityhub/)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 🔗 Security Hub Integration" >> $GITHUB_STEP_SUMMARY
+        echo "All security findings have been automatically sent to AWS Security Hub via SQS-Lambda pipeline." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 [View Security Hub Console](https://us-east-1.console.aws.amazon.com/securityhub/)" >> $GITHUB_STEP_SUMMARY
