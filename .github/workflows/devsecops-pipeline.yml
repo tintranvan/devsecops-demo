@@ -177,12 +177,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-Build-${{ needs.setup.outputs.environment }}
+        aws-region: ${{ env.AWS_REGION }}
+      
     - name: Setup Docker
       uses: docker/setup-buildx-action@v3
       
     - name: Build Application
       run: |
         echo "🏗️ Building application for ${{ needs.setup.outputs.service_name }}"
+        
+        # Check AWS credentials
+        echo "🔍 Checking AWS credentials..."
+        aws sts get-caller-identity
         
         # Get CodeArtifact auth token
         echo "🔐 Getting CodeArtifact auth token..."
