@@ -14,11 +14,10 @@ echo "Target: $TARGET_URL"
 echo "Report Dir: $REPORT_DIR"
 
 mkdir -p "$REPORT_DIR"
-chmod 777 "$REPORT_DIR"
 
 # Step 1: Run OWASP ZAP baseline scan
 echo "📋 Step 1: Running OWASP ZAP baseline scan"
-docker run --rm -v $(pwd)/$REPORT_DIR:/zap/wrk/:rw \
+docker run --rm --user root -v $(pwd)/$REPORT_DIR:/zap/wrk/:rw \
     -t zaproxy/zap-stable zap-baseline.py \
     -t "$TARGET_URL" \
     -J "zap-report-$TIMESTAMP.json" \
