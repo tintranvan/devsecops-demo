@@ -90,3 +90,12 @@ else
     echo "• 🚨 Also Fix: $HIGH high severity code vulnerabilities"
 fi
 echo "════════════════════════════════════════════════════════════"
+
+# Exit with failure code if there are critical or high findings, comment for CICD
+if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+    echo "🔥 Step failed due to CRITICAL or HIGH severity findings."
+    exit 1
+else
+    echo "✅ No critical or high severity findings detected."
+    exit 0
+fi
