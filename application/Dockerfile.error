@@ -5,6 +5,15 @@ WORKDIR /app
 # Copy requirements first for better caching
 COPY requirements.txt .
 
+# SECURITY BUG 1: Hardcoded secret
+ENV AWS_SECRET_KEY=AKIAIOSFODNN7EXAMPLE
+ENV DATABASE_PASSWORD=supersecret123
+
+# SECURITY BUG 2: APT caching issue + insecure curl
+RUN apt-get update
+RUN apt-get install -y curl
+RUN curl --insecure -o /tmp/test.txt https://example.com/test
+
 # Copy pip.conf, install packages, then cleanup
 COPY pip.conf /tmp/pip.conf
 RUN mkdir -p ~/.pip && \
@@ -19,7 +28,8 @@ COPY app.py .
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
-USER appuser
+# SECURITY BUG 3: Comment out USER (run as root)
+# USER appuser
 
 EXPOSE 8080
 
