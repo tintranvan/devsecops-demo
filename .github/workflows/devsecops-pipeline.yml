@@ -240,13 +240,6 @@ jobs:
         
         echo "✅ Image pushed to ECR: ${ECR_REPO}:${VERSION}"
         
-    - name: Upload Build Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-artifacts-${{ needs.setup.outputs.environment }}
-        path: /tmp/app-image.tar
-        retention-days: 7
-
   # 4. Post-Build Security Scans (Parallel)
   image-security-scan:
     name: 🔒 Image Security Scan
@@ -361,13 +354,7 @@ jobs:
         role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
         role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
-        
-    - name: Download Build Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: build-artifacts-${{ needs.setup.outputs.environment }}
-        path: /tmp/
-        
+                
     - name: Deploy Application
       run: |
         echo "🚀 Deploying ${{ needs.setup.outputs.service_name }} to ${{ needs.setup.outputs.environment }}"
