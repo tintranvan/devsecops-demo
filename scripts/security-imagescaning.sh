@@ -4,9 +4,18 @@
 set -e
 
 # Configuration
-AWS_PROFILE="esoftvn-researching"
-AWS_REGION="us-east-1"
-ACCOUNT_ID="647272350116"
+AWS_PROFILE="${AWS_PROFILE:-none}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
+ACCOUNT_ID="${ACCOUNT_ID:-647272350116}"
+
+# Helper function for AWS CLI calls
+aws_cli() {
+    if [ "$AWS_PROFILE" = "none" ]; then
+        aws "$@"
+    else
+        aws "$@" --profile "$AWS_PROFILE"
+    fi
+}
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 ECR_REPOSITORY="devsecops-${ENVIRONMENT}-java-app"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d-%H%M%S)}"
@@ -39,20 +48,35 @@ echo "  ECR URI: $ECR_URI:$IMAGE_TAG"
 
 # Step 1: Create ECR repository if not exists
 echo -e "${BLUE}📦 Creating ECR repository...${NC}"
-aws ecr create-repository \
-    --repository-name "$ECR_REPOSITORY" \
-    --region "$AWS_REGION" \
-    --profile "$AWS_PROFILE" 2>/dev/null || {
-    echo "  ℹ️  Repository already exists"
-}
+if [ "$AWS_PROFILE" = "none" ]; then
+    aws ecr create-repository \
+        --repository-name "$ECR_REPOSITORY" \
+        --region "$AWS_REGION" 2>/dev/null || {
+        echo "  ℹ️  Repository already exists"
+    }
+else
+    aws ecr create-repository \
+        --repository-name "$ECR_REPOSITORY" \
+        --region "$AWS_REGION" \
+        --profile "$AWS_PROFILE" 2>/dev/null || {
+        echo "  ℹ️  Repository already exists"
+    }
+fi
 
 # Step 2: Login to ECR
 echo -e "${BLUE}🔐 Logging into ECR...${NC}"
-aws ecr get-login-password \
-    --region "$AWS_REGION" \
-    --profile "$AWS_PROFILE" | docker login \
-    --username AWS \
-    --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+if [ "$AWS_PROFILE" = "none" ]; then
+    aws ecr get-login-password \
+        --region "$AWS_REGION" | docker login \
+        --username AWS \
+        --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+else
+    aws ecr get-login-password \
+        --region "$AWS_REGION" \
+        --profile "$AWS_PROFILE" | docker login \
+        --username AWS \
+        --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+fi
 
 # Step 3: Build Docker image with CodeArtifact integration
 echo -e "${BLUE}🏗️  Building Docker image with CodeArtifact...${NC}"

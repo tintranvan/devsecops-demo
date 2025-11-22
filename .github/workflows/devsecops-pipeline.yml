@@ -267,7 +267,7 @@ jobs:
           chmod +x ./scripts/security-imagescaning.sh
           # Set environment variables that the script expects
           export ENVIRONMENT=${{ needs.setup.outputs.environment }}
-          export IMAGE_TAG=${{ github.sha }}
+          export IMAGE_TAG="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
           ./scripts/security-imagescaning.sh
         else
           echo "⚠️ Image scanning script not found, skipping..."
@@ -320,7 +320,7 @@ jobs:
         if [ -f "./scripts/security-container-signer.sh" ]; then
           chmod +x ./scripts/security-container-signer.sh
           # Script expects: ./script.sh [image_name] [profile_name] [region]
-          IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ github.sha }}"
+          IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
           ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
         else
           echo "⚠️ Container signing script not found, skipping..."
@@ -373,7 +373,7 @@ jobs:
         # Set deployment variables
         SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
         ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-        VERSION="${{ github.sha }}"
+        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
         ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
         
         # Load Docker image from artifact
@@ -390,7 +390,8 @@ jobs:
         
         # Deploy with Terraform
         echo "🏗️ Generating Terraform configuration..."
-        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${VERSION} || echo "⚠️ Terraform generator not found"
+        NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
+        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
         
         echo "🌍 Deploying infrastructure..."
         if [ -d "application/infrastructure" ]; then
@@ -400,7 +401,7 @@ jobs:
         fi
         
         echo "✅ Deployment completed successfully!"
-        echo "📦 Image: ${ECR_REPO}:${VERSION}"
+        echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
 
   # 6. Post-Deploy Security
   dast-security-scan:
