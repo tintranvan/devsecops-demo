@@ -8,18 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/config.sh"
 
 # Configuration (can be overridden by environment variables)
-AWS_PROFILE="${AWS_PROFILE:-none}"
 AWS_REGION="${AWS_REGION:-us-east-1}"
 ACCOUNT_ID="${AWS_ACCOUNT_ID}"
 
-# Helper function for AWS CLI calls
-aws_cli() {
-    if [ "$AWS_PROFILE" = "none" ]; then
-        aws "$@"
-    else
-        aws "$@" --profile "$AWS_PROFILE"
-    fi
-}
+# aws_cli() function is now loaded from config.sh
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 ECR_REPOSITORY="devsecops-${ENVIRONMENT}-java-app"
 IMAGE_TAG="${IMAGE_TAG:-$(date +%Y%m%d-%H%M%S)}"
@@ -52,35 +44,11 @@ echo "  ECR URI: $ECR_URI:$IMAGE_TAG"
 
 # Step 1: Create ECR repository if not exists
 echo -e "${BLUE}📦 Creating ECR repository...${NC}"
-if [ "$AWS_PROFILE" = "none" ]; then
-    aws ecr create-repository \
-        --repository-name "$ECR_REPOSITORY" \
-        --region "$AWS_REGION" 2>/dev/null || {
-        echo "  ℹ️  Repository already exists"
-    }
-else
-    aws ecr create-repository \
-        --repository-name "$ECR_REPOSITORY" \
-        --region "$AWS_REGION" \
-        --profile "$AWS_PROFILE" 2>/dev/null || {
-        echo "  ℹ️  Repository already exists"
-    }
-fi
+aws ecr create-repository --repository-name "$ECR_REPOSITORY" --region "$AWS_REGION" 2>/dev/null || echo "  ℹ️  Repository already exists"
 
 # Step 2: Login to ECR
 echo -e "${BLUE}🔐 Logging into ECR...${NC}"
-if [ "$AWS_PROFILE" = "none" ]; then
-    aws ecr get-login-password \
-        --region "$AWS_REGION" | docker login \
-        --username AWS \
-        --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-else
-    aws ecr get-login-password \
-        --region "$AWS_REGION" \
-        --profile "$AWS_PROFILE" | docker login \
-        --username AWS \
-        --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
-fi
+aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
 
 # Step 3: Tag existing Docker image (skip build - use artifact from build job)
 echo -e "${BLUE}📥 Using Docker image from build job...${NC}"

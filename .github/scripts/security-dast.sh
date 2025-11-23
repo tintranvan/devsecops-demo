@@ -156,17 +156,18 @@ if [ -f "$ASFF_FILE" ]; then
     while read -r finding; do
         title=$(echo "$finding" | jq -r '.Title')
         
-        if [ -n "$AWS_PROFILE" ]; then
+        # In GitHub Actions, don't use profile
+        if [ -n "$GITHUB_ACTIONS" ] || [ -z "$AWS_PROFILE" ] || [ "$AWS_PROFILE" = "none" ]; then
+            ERROR_OUTPUT=$(aws sqs send-message \
+                --queue-url "$SQS_QUEUE_URL" \
+                --message-body "$finding" \
+                --region "$REGION" 2>&1)
+        else
             ERROR_OUTPUT=$(aws sqs send-message \
                 --queue-url "$SQS_QUEUE_URL" \
                 --message-body "$finding" \
                 --region "$REGION" \
                 --profile "$AWS_PROFILE" 2>&1)
-        else
-            ERROR_OUTPUT=$(aws sqs send-message \
-                --queue-url "$SQS_QUEUE_URL" \
-                --message-body "$finding" \
-                --region "$REGION" 2>&1)
         fi
         EXIT_CODE=$?
         

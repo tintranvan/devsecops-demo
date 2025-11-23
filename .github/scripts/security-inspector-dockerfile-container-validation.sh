@@ -159,8 +159,8 @@ send_to_sqs() {
         # Create SQS message with finding
         message_body=$(echo "$finding" | jq -c .)
         
-        # Send to SQS
-        if [ "$PROFILE" = "none" ]; then
+        # Send to SQS (in GitHub Actions, don't use profile)
+        if [ -n "$GITHUB_ACTIONS" ] || [ -z "$PROFILE" ] || [ "$PROFILE" = "none" ]; then
             aws_result=$(aws sqs send-message \
                 --queue-url "$SQS_QUEUE_URL" \
                 --message-body "$message_body" \

@@ -37,7 +37,8 @@ get_aws_account_id() {
 
 # Helper function for AWS CLI calls with optional profile
 aws_cli() {
-    if [ -z "$AWS_PROFILE" ] || [ "$AWS_PROFILE" = "none" ]; then
+    # In CI/CD (GitHub Actions), don't use profile - credentials are already configured
+    if [ -n "$GITHUB_ACTIONS" ] || [ -z "$AWS_PROFILE" ] || [ "$AWS_PROFILE" = "none" ]; then
         aws "$@"
     else
         aws "$@" --profile "$AWS_PROFILE"

@@ -10,13 +10,13 @@ source "${SCRIPT_DIR}/config.sh"
 PROFILE=${1:-${AWS_PROFILE}}
 REGION=${2:-${AWS_REGION}}
 
-# Conditionally set profile argument
-if [ -n "$PROFILE" ] && [ "$PROFILE" != "none" ]; then
+# In GitHub Actions, don't use profile
+if [ -n "$GITHUB_ACTIONS" ] || [ -z "$PROFILE" ] || [ "$PROFILE" = "none" ]; then
+  AWS_ARGS=()
+  echo "🔑 Using AWS credentials from environment (GitHub Actions/OIDC)"
+else
   AWS_ARGS=(--profile "$PROFILE")
   echo "👤 Using AWS Profile: $PROFILE"
-else
-  AWS_ARGS=()
-  echo "🔑 Using AWS credentials from environment (OIDC)"
 fi
 
 echo "🔍 AWS Inspector Code Security Analysis"

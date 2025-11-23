@@ -77,13 +77,9 @@ else
     # Real authentication for local testing
     mkdir -p ~/.docker
     echo '{"credsStore":""}' > ~/.docker/config.json
-    if [ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ]; then
-        aws ecr get-login-password --region $REGION --profile $AWS_PROFILE | \
-            docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
-    else
-        aws ecr get-login-password --region $REGION | \
-            docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
-    fi
+    # In GitHub Actions, don't use profile
+    aws ecr get-login-password --region $REGION | \
+        docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
     echo "✅ ECR authentication successful"
 fi
 echo "✅ ECR authentication successful"
@@ -100,7 +96,6 @@ else
         --repository-name devsecops-dev-java-app \
         --image-ids imageTag=20251121-155018 \
         --region $REGION \
-        $([ -n "$AWS_PROFILE" ] && [ "$AWS_PROFILE" != "default" ] && echo "--profile $AWS_PROFILE") \
         --query 'imageDetails[0].imageDigest' \
         --output text)
     echo "✅ Image digest retrieved: ${IMAGE_DIGEST}"
