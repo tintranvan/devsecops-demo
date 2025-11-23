@@ -5,10 +5,10 @@
 
 set -e
 
-ACCOUNT_ID="${AWS_ACCOUNT_ID:-647272350116}"
-REGION="${3:-us-east-1}"
-IMAGE_NAME="${1:-${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devsecops-dev-java-app:latest}"
+IMAGE_NAME="${1:-647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-dev-java-app:latest}"
 PROFILE_NAME="${2:-devsecops_image_demo_sign}"
+REGION="${3:-us-east-1}"
+ACCOUNT_ID="647272350116"
 AWS_PROFILE="${AWS_PROFILE:-default}"
 
 echo "🔐 AWS Signer Notation Container Signing"

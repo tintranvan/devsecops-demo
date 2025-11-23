@@ -38,6 +38,8 @@ jobs:
         
     - name: Run SAST Scan
       id: sast-scan
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
       run: |
         chmod +x ./.github/scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
         ./.github/scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ inputs.aws_region }}

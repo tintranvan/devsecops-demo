@@ -41,6 +41,8 @@ jobs:
       
     - name: Run Dockerfile Scan
       id: dockerfile-scan
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
       run: |
         chmod +x ./.github/scripts/security-inspector-dockerfile-container-validation.sh
         ./.github/scripts/security-inspector-dockerfile-container-validation.sh none ${{ inputs.aws_region }}

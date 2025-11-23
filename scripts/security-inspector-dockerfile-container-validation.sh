@@ -7,7 +7,9 @@ set -e
 PROFILE=${1:-none}
 REGION=${2:-us-east-1}
 
-OUTPUT_DIR="security/inspector"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+OUTPUT_DIR="$PROJECT_ROOT/security/inspector"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 echo "🔍 AWS Inspector SBOM Generator (Docker)"

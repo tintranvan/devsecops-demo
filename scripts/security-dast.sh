@@ -63,9 +63,9 @@ def convert_zap_to_asff(zap_file, target_url):
             finding = {
                 "SchemaVersion": "2018-10-08",
                 "Id": f"dast-zap-{alert.get('pluginid', 'unknown')}-{uuid.uuid4()}",
-                "ProductArn": f"arn:aws:securityhub:{os.environ.get('AWS_REGION', 'us-east-1')}:{os.environ.get('AWS_ACCOUNT_ID', '647272350116')}:product/{os.environ.get('AWS_ACCOUNT_ID', '647272350116')}/default",
+                "ProductArn": "arn:aws:securityhub:us-east-1:647272350116:product/647272350116/default",
                 "GeneratorId": f"owasp-zap-{alert.get('pluginid', 'unknown')}",
-                "AwsAccountId": os.environ.get('AWS_ACCOUNT_ID', '647272350116'),
+                "AwsAccountId": "647272350116",
                 "Types": ["Software and Configuration Checks/Vulnerabilities"],
                 "CreatedAt": datetime.utcnow().isoformat() + "Z",
                 "UpdatedAt": datetime.utcnow().isoformat() + "Z",
@@ -134,8 +134,7 @@ echo "✅ ZAP results converted to ASFF format"
 # Step 3: Send findings to SQS for Lambda processing
 echo "📋 Step 3: Sending findings to SQS for Lambda processing"
 ASFF_FILE="$REPORT_DIR/zap-report-$TIMESTAMP-asff.json"
-AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-647272350116}"
-SQS_QUEUE_URL="https://sqs.${AWS_REGION}.amazonaws.com/${AWS_ACCOUNT_ID}/security-findings-queue"
+SQS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/647272350116/security-findings-queue"
 
 if [ -f "$ASFF_FILE" ]; then
     echo "📤 Sending DAST findings to SQS queue..."

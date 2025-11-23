@@ -45,6 +45,8 @@ jobs:
         
     - name: Run DAST Security Scan
       id: dast-scan
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
       run: |
         if [ -f "./.github/scripts/security-dast.sh" ]; then
           chmod +x ./.github/scripts/security-dast.sh

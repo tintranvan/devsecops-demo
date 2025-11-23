@@ -43,6 +43,8 @@ jobs:
         
     - name: Sign Container Image
       id: container-sign
+      env:
+        AWS_REGION: ${{ inputs.aws_region }}
       run: |
         if [ -f "./.github/scripts/security-container-signer.sh" ]; then
           chmod +x ./.github/scripts/security-container-signer.sh
