@@ -11,12 +11,11 @@ resources:
   desired_count: 1
   max_count: 10
 
-# Deployment configuration
+# Deployment configurationn
 deployment:
   strategy: rolling_update
-  minimum_healthy_percent: 50
-  maximum_percent: 200
-  health_check_grace_period: 60s
+  minimum_healthy_percent: 0      
+  health_check_grace_period: 10s 
 
 # Auto-scaling configuration
 scaling:

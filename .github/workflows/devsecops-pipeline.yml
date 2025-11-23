@@ -4,7 +4,7 @@ on:
   # push:
   #   branches: [ main, develop, staging ]
   push:
-    branches: [ dev ]
+    branches: [ dev, refactor ]
   # pull_request:
   #   branches: [ main ]
   workflow_dispatch:
@@ -24,6 +24,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "647272350116"
 
 jobs:
   # 1. Environment Setup
@@ -77,8 +78,8 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-DevSecOps-${{ needs.setup.outputs.environment }}
+        role-to-assume: ${{ steps.vars.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || steps.vars.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-DevSecOps-${{ steps.vars.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
 
   # 2. Pre-Build Security Scans (Parallel)
@@ -124,6 +125,15 @@ jobs:
         else
           echo "✅ SAST passed successfully"
         fi
+    
+    - name: Upload SAST Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: sast-reports
+        path: security/inspector/*.json
+        retention-days: 30
+        if-no-files-found: ignore
 
   dockerfile-security-scan:
     name: 🐳 Dockerfile Security Scan
@@ -167,6 +177,15 @@ jobs:
         else
           echo "✅ Dockerfile scan passed successfully"
         fi
+    
+    - name: Upload Dockerfile Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dockerfile-reports
+        path: security/inspector/*.json
+        retention-days: 30
+        if-no-files-found: ignore
 
   #3. Build & Package
   build:
@@ -202,17 +221,23 @@ jobs:
         echo "🔐 Getting CodeArtifact auth token..."
         CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
           --domain devsecops-domain \
-          --domain-owner 647272350116 \
-          --region us-east-1 \
+          --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+          --region ${{ env.AWS_REGION }} \
           --query authorizationToken \
-          --output text)
+          --output text) || {
+          echo "❌ Failed to get CodeArtifact token"
+          exit 1
+        }
+        
+        # Mask token in logs
+        echo "::add-mask::$CODEARTIFACT_AUTH_TOKEN"
         
         # Create temporary pip.conf
         echo "📝 Creating temporary pip.conf..."
         cd application
         cat > pip.conf << EOF
         [global]
-        index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-647272350116.d.codeartifact.us-east-1.amazonaws.com/pypi/python-packages/simple/
+        index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-${{ env.AWS_ACCOUNT_ID }}.d.codeartifact.${{ env.AWS_REGION }}.amazonaws.com/pypi/python-packages/simple/
         EOF
         
     - name: Set up Docker Buildx
@@ -235,23 +260,19 @@ jobs:
         
     - name: Cleanup Build Files
       run: |
-        # Cleanup
+        # Cleanup pip.conf (contains sensitive token)
         rm -f application/pip.conf
-        
-        # Clear token from memory
-        unset CODEARTIFACT_AUTH_TOKEN
+        echo "✅ Cleaned up temporary build files"
         
     - name: Push to ECR
       run: |
-        # Configure ECR repository (use existing repo)
-        ACCOUNT_ID="647272350116"
-        REGION="us-east-1"
-        ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
+        # Configure ECR repository
+        ECR_REPO="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
         VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
         
         # Login to ECR
         echo "🔐 Logging into ECR..."
-        aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+        aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         
         # Tag and push image
         docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
@@ -307,6 +328,17 @@ jobs:
         else
           echo "✅ Image scan passed successfully"
         fi
+    
+    - name: Upload Image Scan Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: image-scan-reports
+        path: |
+          security/ecr/*.json
+          security/ecr/*.md
+        retention-days: 30
+        if-no-files-found: ignore
 
   container-signing:
     name: ✍️ Container Image Signing
@@ -334,7 +366,7 @@ jobs:
         if [ -f "./scripts/security-container-signer.sh" ]; then
           chmod +x ./scripts/security-container-signer.sh
           # Script expects: ./script.sh [image_name] [profile_name] [region]
-          IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
+          IMAGE_NAME="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
           ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
         else
           echo "⚠️ Container signing script not found, skipping..."
@@ -354,6 +386,15 @@ jobs:
         else
           echo "✅ Container signing passed successfully"
         fi
+    
+    - name: Upload Signing Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: signing-reports
+        path: security/reports/notation-*.json
+        retention-days: 30
+        if-no-files-found: ignore
 
   #5. Deploy
   deploy:
@@ -401,19 +442,28 @@ jobs:
             --query 'services[0].taskDefinition' \
             --output text 2>/dev/null || echo "")
         
+        # Export variables for rollback steps
+        echo "previous_task_def=$PREVIOUS_TASK_DEF" >> $GITHUB_OUTPUT
+        echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+        echo "service_name_full=$SERVICE_NAME_FULL" >> $GITHUB_OUTPUT
         
-        # Continue with deployment...
-        # Image already pushed by build job, proceed with deployment
+        echo "📋 Rollback info saved:"
+        echo "  Previous Task Definition: $PREVIOUS_TASK_DEF"
+        echo "  Cluster: $CLUSTER_NAME"
+        echo "  Service: $SERVICE_NAME_FULL"
         
         # Deploy with Terraform
         echo "🏗️ Generating Terraform configuration..."
         python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
         
-        echo "🌍 Deploying infrastructure..."
+        echo "🌍 Deploying infrastructure with Terraform..."
         cd application/infrastructure
-        terraform init
+  
+        # Initialize Terraform with backend config
+        terraform init -reconfigure
+        # Plan and apply
         terraform plan -out=tfplan
-        terraform apply tfplan
+        terraform apply -auto-approve tfplan
         
         echo "✅ Deployment completed successfully"
         
@@ -421,14 +471,20 @@ jobs:
       id: healthcheck
       run: |
         echo "🏥 Starting health check..."
-        SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
-        CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
+        SERVICE_NAME_FULL="${{ steps.deploy.outputs.service_name_full }}"
+        CLUSTER_NAME="${{ steps.deploy.outputs.cluster_name }}"
+        PREVIOUS_TASK_DEF="${{ steps.deploy.outputs.previous_task_def }}"
         
-        # Health check with rollback
-        echo "🏥 Starting health check (5 minutes max)..."
-        for i in {1..30}; do  # 5 minutes max (30 * 10s)
+        echo "📋 Health check configuration:"
+        echo "  Cluster: $CLUSTER_NAME"
+        echo "  Service: $SERVICE_NAME_FULL"
+        echo "  Previous Task Def: $PREVIOUS_TASK_DEF"
+        
+        # Health check with inline rollback capability (optimized for demo)
+        echo "🏥 Starting health check (2 minutes max)..."
+        for i in {1..30}; do  # 3 minutes max
             echo "  Health check attempt $i/30..."
-            sleep 10
+            sleep 5
             
             SERVICE_STATUS=$(aws ecs describe-services \
                 --cluster $CLUSTER_NAME \
@@ -444,7 +500,7 @@ jobs:
                 --query 'services[0].desiredCount' \
                 --output text)
 
-            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
+            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ] && [ "$DESIRED_COUNT" -gt 0 ]; then
                 # Check deployment status
                 DEPLOYMENT_STATUS=$(aws ecs describe-services \
                     --cluster $CLUSTER_NAME \
@@ -457,7 +513,7 @@ jobs:
                     echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
                     echo "✅ Deployment completed successfully"
                     echo "health_status=success" >> $GITHUB_OUTPUT
-                    break
+                    exit 0
                 else
                     echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
                 fi
@@ -465,12 +521,14 @@ jobs:
                 echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
             fi
             
-            # If this is the last attempt, prepare for rollback
+            # If this is the last attempt, trigger rollback
             if [ $i -eq 30 ]; then
                 echo "❌ Health check failed after 30 attempts"
+                echo "health_status=failed" >> $GITHUB_OUTPUT
                 
-                if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
-                    echo "🔄 Rolling back to previous task definition..."
+                # Trigger rollback if previous task definition exists
+                if [ -n "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+                    echo "🔄 Initiating rollback to previous task definition..."
                     
                     aws ecs update-service \
                         --cluster $CLUSTER_NAME \
@@ -479,91 +537,60 @@ jobs:
                         --region ${{ env.AWS_REGION }} >/dev/null
                         
                     echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
+                    echo "⏳ Waiting for rollback to stabilize..."
+                    
+                    # Wait for rollback to complete (max 1 minute)
+                    for j in {1..12}; do
+                        sleep 5
+                        ROLLBACK_STATUS=$(aws ecs describe-services \
+                            --cluster $CLUSTER_NAME \
+                            --services $SERVICE_NAME_FULL \
+                            --region ${{ env.AWS_REGION }} \
+                            --query 'services[0].runningCount' \
+                            --output text)
+                        
+                        if [ "$ROLLBACK_STATUS" -ge "$DESIRED_COUNT" ]; then
+                            echo "✅ Rollback completed successfully"
+                            break
+                        fi
+                        echo "  Rollback progress: $ROLLBACK_STATUS/$DESIRED_COUNT tasks..."
+                    done
+                else
+                    echo "⚠️ No previous task definition available for rollback"
                 fi
                 
-                echo "health_status=failed" >> $GITHUB_OUTPUT
                 exit 1
             fi
         done
         
-        # Check service health
-        RUNNING_COUNT=$(aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} \
-          --query 'services[0].runningCount' \
-          --output text)
+    - name: Rollback on Deployment Failure
+      if: failure() && steps.deploy.outputs.previous_task_def != '' && steps.healthcheck.outcome == 'skipped'
+      run: |
+        echo "🔄 Deployment failed before health check, initiating rollback..."
         
-        DESIRED_COUNT=$(aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} \
-          --query 'services[0].desiredCount' \
-          --output text)
+        CLUSTER_NAME="${{ steps.deploy.outputs.cluster_name }}"
+        SERVICE_NAME_FULL="${{ steps.deploy.outputs.service_name_full }}"
+        PREVIOUS_TASK_DEF="${{ steps.deploy.outputs.previous_task_def }}"
         
-        echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
-        
-        if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
-          echo "✅ Health check passed"
-          echo "health_status=success" >> $GITHUB_OUTPUT
+        if [ -n "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+          echo "🔄 Rolling back to: $PREVIOUS_TASK_DEF"
+          
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME_FULL \
+            --task-definition $PREVIOUS_TASK_DEF \
+            --region ${{ env.AWS_REGION }}
+          
+          echo "⏳ Waiting for rollback to stabilize..."
+          aws ecs wait services-stable \
+            --cluster $CLUSTER_NAME \
+            --services $SERVICE_NAME_FULL \
+            --region ${{ env.AWS_REGION }} || echo "⚠️ Rollback wait timeout"
+          
+          echo "✅ Rollback completed"
         else
-          echo "❌ Health check failed"
-          echo "health_status=failed" >> $GITHUB_OUTPUT
-          exit 1
+          echo "⚠️ No previous task definition available for rollback"
         fi
-        
-    - name: Rollback on Health Check Failure
-      if: failure() && steps.deploy.outputs.previous_task_def != ''
-      run: |
-        echo "🔄 Health check failed, rolling back..."
-        aws ecs update-service \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --service ${{ steps.deploy.outputs.service_name_full }} \
-          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-          --region ${{ env.AWS_REGION }}
-        
-        # Wait for rollback to complete
-        aws ecs wait services-stable \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --services ${{ steps.deploy.outputs.service_name_full }} \
-          --region ${{ env.AWS_REGION }}
-        
-        echo "✅ Rollback completed"
-        
-    - name: Rollback on Failure
-      if: failure() && steps.deploy.outputs.previous_task_def != ''
-      run: |
-        echo "🔄 Rolling back to previous task definition..."
-        aws ecs update-service \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --service ${{ steps.deploy.outputs.service_name_full }} \
-          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-          --region ${{ env.AWS_REGION }}
-        echo "✅ Rollback completed"
-        
-        # Set deployment variables
-        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
-        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-        ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
-        
-        # Load Docker image from artifact
-        # Image already pushed by build job, proceed with deployment
-        
-        # Deploy with Terraform
-        echo "🏗️ Generating Terraform configuration..."
-        NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
-        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
-        
-        echo "🌍 Deploying infrastructure..."
-        if [ -d "application/infrastructure" ]; then
-          cd application/infrastructure
-          terraform init -reconfigure
-          terraform apply -auto-approve
-        fi
-        
-        echo "✅ Deployment completed successfully!"
-        echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
 
   # 6. Post-Deploy Security
   dast-security-scan:
@@ -611,17 +638,19 @@ jobs:
         else
           echo "✅ DAST scan passed successfully"
         fi
-      
+    
     - name: Upload DAST Security Reports
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: dast-reports-${{ needs.setup.outputs.environment }}
         path: |
-          security/reports/*.json
-          security/reports/*.html
+          security/reports/zap-*.json
+          security/reports/zap-*.html
+          security/reports/dast-*.json
         retention-days: 30
-
+        if-no-files-found: ignore
+      
   # Security Summary
   security-summary:
     name: 📊 Security Summary
@@ -630,6 +659,91 @@ jobs:
     if: always()
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download All Security Artifacts
+      uses: actions/download-artifact@v4
+      continue-on-error: true
+      with:
+        path: security-artifacts
+    
+    - name: Organize Security Files
+      run: |
+        # Create security directories
+        mkdir -p security/reports security/ecr security/inspector
+        
+        echo "📦 Downloaded artifacts:"
+        ls -la security-artifacts/ 2>/dev/null || echo "No artifacts downloaded"
+        
+        # Copy artifacts to expected locations
+        if [ -d "security-artifacts/sast-reports" ]; then
+          echo "✅ Copying SAST reports..."
+          cp -v security-artifacts/sast-reports/* security/inspector/ 2>/dev/null || echo "⚠️ No SAST files"
+        else
+          echo "⚠️ SAST reports not found"
+        fi
+        
+        if [ -d "security-artifacts/dockerfile-reports" ]; then
+          echo "✅ Copying Dockerfile reports..."
+          cp -v security-artifacts/dockerfile-reports/* security/inspector/ 2>/dev/null || echo "⚠️ No Dockerfile files"
+        else
+          echo "⚠️ Dockerfile reports not found"
+        fi
+        
+        if [ -d "security-artifacts/image-scan-reports" ]; then
+          echo "✅ Copying Image scan reports..."
+          cp -v security-artifacts/image-scan-reports/* security/ecr/ 2>/dev/null || echo "⚠️ No Image scan files"
+        else
+          echo "⚠️ Image scan reports not found"
+        fi
+        
+        if [ -d "security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}" ]; then
+          echo "✅ Copying DAST reports..."
+          cp -v security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}/* security/reports/ 2>/dev/null || echo "⚠️ No DAST files"
+        else
+          echo "⚠️ DAST reports not found"
+        fi
+        
+        if [ -d "security-artifacts/signing-reports" ]; then
+          echo "✅ Copying Signing reports..."
+          cp -v security-artifacts/signing-reports/* security/reports/ 2>/dev/null || echo "⚠️ No Signing files"
+        else
+          echo "⚠️ Signing reports not found"
+        fi
+        
+        echo ""
+        echo "📁 Final security files:"
+        echo "Inspector files:"
+        ls -lh security/inspector/ 2>/dev/null || echo "  (empty)"
+        echo "ECR files:"
+        ls -lh security/ecr/ 2>/dev/null || echo "  (empty)"
+        echo "Reports files:"
+        ls -lh security/reports/*.json 2>/dev/null || echo "  (empty)"
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Generate Detailed Security Report
+      env:
+        SAST_OUTCOME: ${{ needs.sast-security-scan.outputs.sast-outcome }}
+        DOCKERFILE_OUTCOME: ${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}
+        IMAGE_OUTCOME: ${{ needs.image-security-scan.outputs.image-outcome }}
+        SIGNING_OUTCOME: ${{ needs.container-signing.outputs.signing-outcome }}
+        DAST_OUTCOME: ${{ needs.dast-security-scan.outputs.dast-outcome }}
+      run: |
+        # Generate comprehensive security report
+        chmod +x scripts/generate-security-report.py
+        python3 scripts/generate-security-report.py \
+          "${{ needs.setup.outputs.environment }}" \
+          "${{ github.run_number }}" \
+          "${{ github.sha }}" || echo "⚠️ Report generation failed, continuing..."
+        
+        echo "✅ Security report generated successfully"
+        ls -lh security/reports/*.html 2>/dev/null || echo "No HTML reports found"
+    
     - name: Generate Security Summary
       run: |
         echo "# 🛡️ DevSecOps Security Pipeline Results" >> $GITHUB_STEP_SUMMARY
@@ -704,7 +818,84 @@ jobs:
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Detailed Findings Breakdown
+        echo "## 📋 Detailed Findings Breakdown" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Load summary JSON if exists
+        SUMMARY_FILE="security/reports/security-summary-${{ github.run_number }}.json"
+        if [ -f "$SUMMARY_FILE" ]; then
+          TOTAL=$(jq -r '.total_findings // 0' "$SUMMARY_FILE")
+          CRITICAL=$(jq -r '.critical_count // 0' "$SUMMARY_FILE")
+          HIGH=$(jq -r '.high_count // 0' "$SUMMARY_FILE")
+          MEDIUM=$(jq -r '.medium_count // 0' "$SUMMARY_FILE")
+          LOW=$(jq -r '.low_count // 0' "$SUMMARY_FILE")
+          
+          echo "### 🎯 Overall Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 Critical | $CRITICAL | $([ $CRITICAL -gt 0 ] && echo '⚠️ Action Required' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟠 High | $HIGH | $([ $HIGH -gt 0 ] && echo '⚠️ Action Required' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 Medium | $MEDIUM | $([ $MEDIUM -gt 0 ] && echo 'ℹ️ Review' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟢 Low | $LOW | $([ $LOW -gt 0 ] && echo 'ℹ️ Review' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total** | **$TOTAL** | - |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Per-scan breakdown
+          echo "### 🔍 Scan-by-Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # SAST/IaC/SCA/SBOM
+          SAST_TOTAL=$(jq -r '.scans["SAST/IaC/SCA/SBOM"].total // 0' "$SUMMARY_FILE")
+          SAST_STATUS=$(jq -r '.scans["SAST/IaC/SCA/SBOM"].status // "N/A"' "$SUMMARY_FILE")
+          echo "**SAST/IaC/SCA/SBOM**: $SAST_TOTAL findings ($SAST_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # Dockerfile
+          DOCKERFILE_TOTAL=$(jq -r '.scans.Dockerfile.total // 0' "$SUMMARY_FILE")
+          DOCKERFILE_STATUS=$(jq -r '.scans.Dockerfile.status // "N/A"' "$SUMMARY_FILE")
+          echo "**Dockerfile Security**: $DOCKERFILE_TOTAL findings ($DOCKERFILE_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # Image Security
+          IMAGE_TOTAL=$(jq -r '.scans.ImageSecurity.total // 0' "$SUMMARY_FILE")
+          IMAGE_STATUS=$(jq -r '.scans.ImageSecurity.status // "N/A"' "$SUMMARY_FILE")
+          echo "**Image Security**: $IMAGE_TOTAL findings ($IMAGE_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # DAST
+          DAST_TOTAL=$(jq -r '.scans.DAST.total // 0' "$SUMMARY_FILE")
+          DAST_STATUS=$(jq -r '.scans.DAST.status // "N/A"' "$SUMMARY_FILE")
+          echo "**DAST**: $DAST_TOTAL findings ($DAST_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # Container Signing
+          SIGNING_STATUS=$(jq -r '.scans.ContainerSigning.status // "N/A"' "$SUMMARY_FILE")
+          echo "**Container Signing**: $SIGNING_STATUS" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Git Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ Detailed report not available" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔗 Security Hub Integration" >> $GITHUB_STEP_SUMMARY
         echo "All security findings have been automatically sent to AWS Security Hub via SQS-Lambda pipeline." >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "🔗 [View Security Hub Console](https://us-east-1.console.aws.amazon.com/securityhub/)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📥 **Download Reports**: Check workflow artifacts for detailed XML and JSON reports" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports-${{ needs.setup.outputs.environment }}-${{ github.run_number }}
+        path: |
+          security/reports/*.html
+          security/reports/*.json
+        retention-days: 90

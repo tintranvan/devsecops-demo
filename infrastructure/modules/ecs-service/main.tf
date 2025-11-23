@@ -71,6 +71,11 @@ resource "aws_ecs_service" "main" {
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
 
+  # Deployment Configuration (for fast deployment)
+  deployment_minimum_healthy_percent = var.minimum_healthy_percent
+  deployment_maximum_percent         = var.maximum_percent
+  health_check_grace_period_seconds  = var.health_check_grace_period
+
   network_configuration {
     subnets          = var.private_subnet_ids
     security_groups  = [aws_security_group.ecs_tasks.id, var.ecs_security_group_id]

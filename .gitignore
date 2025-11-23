@@ -32,3 +32,4 @@ Thumbs.db
 *.log
 terraform/environement/**/**
 security/*
+.history/*
