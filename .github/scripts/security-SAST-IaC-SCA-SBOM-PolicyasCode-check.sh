@@ -31,11 +31,19 @@ echo "   Profile: ${PROFILE:-none}"
 echo "   AWS Args: ${AWS_ARGS[@]:-none}"
 
 # Capture both stdout and stderr
-FINDINGS=$(aws inspector2 list-findings \
-    "${AWS_ARGS[@]}" \
-    --region "$REGION" \
-    --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-    --output json 2>&1)
+# Use proper array expansion to avoid empty arguments
+if [ ${#AWS_ARGS[@]} -eq 0 ]; then
+    FINDINGS=$(aws inspector2 list-findings \
+        --region "$REGION" \
+        --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
+        --output json 2>&1)
+else
+    FINDINGS=$(aws inspector2 list-findings \
+        "${AWS_ARGS[@]}" \
+        --region "$REGION" \
+        --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
+        --output json 2>&1)
+fi
 
 # Check if command succeeded
 if [ $? -ne 0 ]; then
