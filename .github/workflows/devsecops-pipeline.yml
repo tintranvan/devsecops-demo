@@ -29,7 +29,7 @@ env:
 jobs:
   # 1. Environment Setup
   setup:
-    name: 🔧 Environment Setup
+    name: Environment Setup
     runs-on: ubuntu-latest
     outputs:
       environment: ${{ steps.vars.outputs.environment }}
@@ -38,10 +38,13 @@ jobs:
       target_url: ${{ steps.vars.outputs.target_url }}
     
     steps:
-    - name: Set deployment variables
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Load environment configuration
       id: vars
       run: |
-        # Set ENVIRONMENT
+        # Determine environment from branch or manual input
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           ENVIRONMENT="${{ github.event.inputs.environment }}"
         elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
@@ -52,25 +55,47 @@ jobs:
           ENVIRONMENT="dev"
         fi
         
-        # Set SERVICE_NAME
-        SERVICE_NAME="demo-app"
+        echo "Detected environment: $ENVIRONMENT"
+        echo ""
         
-        # Set continue-on-error based on environment
-        if [ "$ENVIRONMENT" = "dev" ]; then
-          CONTINUE_ON_ERROR="true"
-        else
-          CONTINUE_ON_ERROR="false"
+        # Load environment configuration from .env file
+        ENV_FILE=".github/config/${ENVIRONMENT}.env"
+        
+        if [ ! -f "$ENV_FILE" ]; then
+          echo "❌ Configuration file not found: $ENV_FILE"
+          exit 1
         fi
         
+        echo "Loading configuration from: $ENV_FILE"
+        
+        # Source the environment file
+        set -a
+        source "$ENV_FILE"
+        set +a
+        
+        # Export to GitHub outputs
         echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
         echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
         echo "continue_on_error=$CONTINUE_ON_ERROR" >> $GITHUB_OUTPUT
-        echo "target_url=https://$ENVIRONMENT-service-01.editforreal.com" >> $GITHUB_OUTPUT
+        echo "target_url=$TARGET_URL" >> $GITHUB_OUTPUT
         
-        echo "🚀 Pipeline Configuration:"
-        echo "  Environment: $ENVIRONMENT"
-        echo "  Service: $SERVICE_NAME"
-        echo "  Continue on Error: $CONTINUE_ON_ERROR"
+        # Display configuration summary
+        echo ""
+        echo "✅ Configuration loaded successfully"
+        echo ""
+        echo "Pipeline Configuration:"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Environment:              $ENV_NAME ($ENVIRONMENT)"
+        echo "AWS Region:               $AWS_REGION"
+        echo "AWS Account:              $AWS_ACCOUNT_ID"
+        echo "Service Name:             $SERVICE_NAME"
+        echo "Continue on Error:        $CONTINUE_ON_ERROR"
+        echo "Target URL:               $TARGET_URL"
+        echo "ECS Cluster:              $ECS_CLUSTER"
+        echo "ECR Repository:           $ECR_REPO"
+        echo "Min Healthy Percent:      $MIN_HEALTHY_PERCENT%"
+        echo "Health Check Grace:       ${HEALTH_CHECK_GRACE_PERIOD}s"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -84,112 +109,28 @@ jobs:
 
   # 2. Pre-Build Security Scans (Parallel)
   sast-security-scan:
-    name: 🔍 SAST/IaC/SCA/SBOM Security Scan
-    runs-on: ubuntu-latest
+    name: SAST/IaC/SCA/SBOM Security Scan
     needs: setup
-    outputs:
-      sast-outcome: ${{ steps.sast-scan.outcome }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-SAST-${{ needs.setup.outputs.environment }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: Run SAST/IaC/SCA/SBOM/Policy Check
-      id: sast-scan
-      run: |
-        if [ -f "./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh" ]; then
-          chmod +x ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
-          ./scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ env.AWS_REGION }}
-        else
-          echo "⚠️ SAST script not found, skipping..."
-        fi
-      continue-on-error: true
-      
-    - name: Check SAST Results
-      run: |
-        if [ "${{ steps.sast-scan.outcome }}" = "failure" ]; then
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "⚠️ SAST FAILED in DEV - Continuing with warnings"
-            echo "::warning title=SAST Security Issues::Security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
-          else
-            echo "🚨 SAST FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-            exit 1
-          fi
-        else
-          echo "✅ SAST passed successfully"
-        fi
-    
-    - name: Upload SAST Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: sast-reports
-        path: security/inspector/*.json
-        retention-days: 30
-        if-no-files-found: ignore
+    uses: ./.github/workflows/shared/security-sast.yml
+    with:
+      environment: ${{ needs.setup.outputs.environment }}
+      aws_region: us-east-1
+    secrets:
+      aws_role: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
 
   dockerfile-security-scan:
-    name: 🐳 Dockerfile Security Scan
-    runs-on: ubuntu-latest
+    name: Dockerfile Security Scan
     needs: setup
-    outputs:
-      dockerfile-outcome: ${{ steps.dockerfile-scan.outcome }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-Dockerfile-${{ needs.setup.outputs.environment }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: Setup Docker
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Run Dockerfile Security Validation
-      id: dockerfile-scan
-      run: |
-        chmod +x ./scripts/security-inspector-dockerfile-container-validation.sh
-        # Use "none" for OIDC like SAST script
-        ./scripts/security-inspector-dockerfile-container-validation.sh none ${{ env.AWS_REGION }}
-      continue-on-error: true
-      
-    - name: Check Dockerfile Results
-      run: |
-        if [ "${{ steps.dockerfile-scan.outcome }}" = "failure" ]; then
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "⚠️ DOCKERFILE SCAN FAILED in DEV - Continuing with warnings"
-            echo "::warning title=Dockerfile Security Issues::Dockerfile security issues detected in dev environment. Review and fix before promoting to staging."
-          else
-            echo "🚨 DOCKERFILE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-            exit 1
-          fi
-        else
-          echo "✅ Dockerfile scan passed successfully"
-        fi
-    
-    - name: Upload Dockerfile Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: dockerfile-reports
-        path: security/inspector/*.json
-        retention-days: 30
-        if-no-files-found: ignore
+    uses: ./.github/workflows/shared/security-dockerfile.yml
+    with:
+      environment: ${{ needs.setup.outputs.environment }}
+      aws_region: us-east-1
+    secrets:
+      aws_role: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
 
   #3. Build & Package
   build:
-    name: 🏗️ Build & Package
+    name: Build & Package
     runs-on: ubuntu-latest
     needs: [setup, sast-security-scan, dockerfile-security-scan]
     #needs: [setup]
@@ -282,123 +223,34 @@ jobs:
         
   #4. Post-Build Security Scans (Parallel)
   image-security-scan:
-    name: 🔒 Image Security Scan
-    runs-on: ubuntu-latest
+    name: Image Security Scan
     needs: [setup, build]
     if: always() && needs.build.result == 'success'
-    outputs:
-      image-outcome: ${{ steps.image-scan.outcome }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-ImageScan-${{ needs.setup.outputs.environment }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-        
-    - name: Run Image Security Scanning
-      id: image-scan
-      run: |
-        if [ -f "./scripts/security-imagescaning.sh" ]; then
-          chmod +x ./scripts/security-imagescaning.sh
-          # Set environment variables that the script expects
-          export ENVIRONMENT=${{ needs.setup.outputs.environment }}
-          export IMAGE_TAG="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
-          ./scripts/security-imagescaning.sh
-        else
-          echo "⚠️ Image scanning script not found, skipping..."
-        fi
-      continue-on-error: true
-      
-    - name: Check Image Scan Results
-      run: |
-        if [ "${{ steps.image-scan.outcome }}" = "failure" ]; then
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "⚠️ IMAGE SCAN FAILED in DEV - Continuing with warnings"
-            echo "::warning title=Image Security Issues::Container image security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
-          else
-            echo "🚨 IMAGE SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-            exit 1
-          fi
-        else
-          echo "✅ Image scan passed successfully"
-        fi
-    
-    - name: Upload Image Scan Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: image-scan-reports
-        path: |
-          security/ecr/*.json
-          security/ecr/*.md
-        retention-days: 30
-        if-no-files-found: ignore
+    uses: ./.github/workflows/shared/security-image-scan.yml
+    with:
+      environment: ${{ needs.setup.outputs.environment }}
+      aws_region: us-east-1
+      image_tag: ${{ needs.setup.outputs.environment }}-${{ github.run_number }}
+      service_name: ${{ needs.setup.outputs.service_name }}
+    secrets:
+      aws_role: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
 
   container-signing:
-    name: ✍️ Container Image Signing
-    runs-on: ubuntu-latest
+    name: Container Image Signing
     needs: [setup, build]
     if: always() && needs.build.result == 'success'
-    outputs:
-      signing-outcome: ${{ steps.container-sign.outcome }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-Signing-${{ needs.setup.outputs.environment }}
-        aws-region: ${{ env.AWS_REGION }}
-
-        
-    - name: Sign Container Image
-      id: container-sign
-      run: |
-        if [ -f "./scripts/security-container-signer.sh" ]; then
-          chmod +x ./scripts/security-container-signer.sh
-          # Script expects: ./script.sh [image_name] [profile_name] [region]
-          IMAGE_NAME="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
-          ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
-        else
-          echo "⚠️ Container signing script not found, skipping..."
-        fi
-      continue-on-error: true
-      
-    - name: Check Container Signing Results
-      run: |
-        if [ "${{ steps.container-sign.outcome }}" = "failure" ]; then
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "⚠️ CONTAINER SIGNING FAILED in DEV - Continuing with warnings"
-            echo "::warning title=Container Signing Issues::Container signing failed in dev environment. Review signing configuration before promoting to staging."
-          else
-            echo "🚨 CONTAINER SIGNING FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-            exit 1
-          fi
-        else
-          echo "✅ Container signing passed successfully"
-        fi
-    
-    - name: Upload Signing Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: signing-reports
-        path: security/reports/notation-*.json
-        retention-days: 30
-        if-no-files-found: ignore
+    uses: ./.github/workflows/shared/security-container-signing.yml
+    with:
+      environment: ${{ needs.setup.outputs.environment }}
+      aws_region: us-east-1
+      image_tag: ${{ needs.setup.outputs.environment }}-${{ github.run_number }}
+      service_name: ${{ needs.setup.outputs.service_name }}
+    secrets:
+      aws_role: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
 
   #5. Deploy
   deploy:
-    name: 🚀 Deploy to ${{ needs.setup.outputs.environment }}
+    name: Deploy to ${{ needs.setup.outputs.environment }}
     runs-on: ubuntu-latest
     needs: [setup, build, image-security-scan, container-signing]
     #needs: [setup, build]
@@ -454,7 +306,7 @@ jobs:
         
         # Deploy with Terraform
         echo "🏗️ Generating Terraform configuration..."
-        python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
+        python3 .github/scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
         
         echo "🌍 Deploying infrastructure with Terraform..."
         cd application/infrastructure
@@ -594,62 +446,16 @@ jobs:
 
   # 6. Post-Deploy Security
   dast-security-scan:
-    name: 🕷️ DAST Security Scan
-    runs-on: ubuntu-latest
+    name: DAST Security Scan
     needs: [setup, deploy]
     if: always() && needs.deploy.result == 'success'
-    outputs:
-      dast-outcome: ${{ steps.dast-scan.outcome }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-DAST-${{ needs.setup.outputs.environment }}
-        aws-region: ${{ env.AWS_REGION }}
-        
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-        
-    - name: Run DAST Security Scan
-      id: dast-scan
-      run: |
-        chmod +x ./scripts/security-dast.sh
-        # Script expects: ./script.sh [target_url]
-        ./scripts/security-dast.sh "${{ needs.setup.outputs.target_url }}"
-      continue-on-error: true
-      
-    - name: Check DAST Results
-      run: |
-        if [ "${{ steps.dast-scan.outcome }}" = "failure" ]; then
-          if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
-            echo "⚠️ DAST SCAN FAILED in DEV - Continuing with warnings"
-            echo "::warning title=DAST Security Issues::Dynamic security vulnerabilities detected in dev environment. Review and fix before promoting to staging."
-          else
-            echo "🚨 DAST SCAN FAILED in ${{ needs.setup.outputs.environment }} - Pipeline should stop"
-            exit 1
-          fi
-        else
-          echo "✅ DAST scan passed successfully"
-        fi
-    
-    - name: Upload DAST Security Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: dast-reports-${{ needs.setup.outputs.environment }}
-        path: |
-          security/reports/zap-*.json
-          security/reports/zap-*.html
-          security/reports/dast-*.json
-        retention-days: 30
-        if-no-files-found: ignore
+    uses: ./.github/workflows/shared/security-dast.yml
+    with:
+      environment: ${{ needs.setup.outputs.environment }}
+      aws_region: us-east-1
+      target_url: ${{ needs.setup.outputs.target_url }}
+    secrets:
+      aws_role: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
       
   # Security Summary
   security-summary:
@@ -730,13 +536,13 @@ jobs:
       env:
         SAST_OUTCOME: ${{ needs.sast-security-scan.outputs.sast-outcome }}
         DOCKERFILE_OUTCOME: ${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}
-        IMAGE_OUTCOME: ${{ needs.image-security-scan.outputs.image-outcome }}
+        IMAGE_OUTCOME: ${{ needs.image-security-scan.outputs.scan-outcome }}
         SIGNING_OUTCOME: ${{ needs.container-signing.outputs.signing-outcome }}
         DAST_OUTCOME: ${{ needs.dast-security-scan.outputs.dast-outcome }}
       run: |
         # Generate comprehensive security report
-        chmod +x scripts/generate-security-report.py
-        python3 scripts/generate-security-report.py \
+        chmod +x .github/scripts/generate-security-report.py
+        python3 .github/scripts/generate-security-report.py \
           "${{ needs.setup.outputs.environment }}" \
           "${{ github.run_number }}" \
           "${{ github.sha }}" || echo "⚠️ Report generation failed, continuing..."
@@ -753,7 +559,7 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔍 Security Scan Results" >> $GITHUB_STEP_SUMMARY
         
-        # SAST Results - based on step outcome, not job result
+        # SAST Results - from reusable workflow
         if [ "${{ needs.sast-security-scan.outputs.sast-outcome }}" = "success" ]; then
           echo "- ✅ **SAST/IaC/SCA/SBOM**: PASSED" >> $GITHUB_STEP_SUMMARY
         else
@@ -764,7 +570,7 @@ jobs:
           fi
         fi
         
-        # Dockerfile Results - based on step outcome
+        # Dockerfile Results - from reusable workflow
         if [ "${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}" = "success" ]; then
           echo "- ✅ **Dockerfile Security**: PASSED" >> $GITHUB_STEP_SUMMARY
         else
@@ -774,8 +580,9 @@ jobs:
             echo "- 🚨 **Dockerfile Security**: FAILED (Pipeline Stopped)" >> $GITHUB_STEP_SUMMARY
           fi
         fi
-        # Image Security Results - based on step outcome
-        if [ "${{ needs.image-security-scan.outputs.image-outcome }}" = "success" ]; then
+        
+        # Image Security Results - from reusable workflow
+        if [ "${{ needs.image-security-scan.outputs.scan-outcome }}" = "success" ]; then
           echo "- ✅ **Image Security**: PASSED" >> $GITHUB_STEP_SUMMARY
         else
           if [ "${{ needs.setup.outputs.environment }}" = "dev" ]; then
@@ -785,7 +592,7 @@ jobs:
           fi
         fi
         
-        # Container Signing Results - based on step outcome
+        # Container Signing Results - from reusable workflow
         if [ "${{ needs.container-signing.outputs.signing-outcome }}" = "success" ]; then
           echo "- ✅ **Container Signing**: PASSED" >> $GITHUB_STEP_SUMMARY
         else
@@ -796,7 +603,7 @@ jobs:
           fi
         fi
         
-        # DAST Results - based on step outcome
+        # DAST Results - from reusable workflow
         if [ "${{ needs.dast-security-scan.outputs.dast-outcome }}" = "success" ]; then
           echo "- ✅ **DAST Security**: PASSED" >> $GITHUB_STEP_SUMMARY
         else

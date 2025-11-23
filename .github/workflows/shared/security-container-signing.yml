@@ -1,0 +1,84 @@
+name: Container Signing (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      service_name:
+        required: true
+        type: string
+    secrets:
+      aws_role:
+        required: true
+    outputs:
+      signing-outcome:
+        description: "Container signing outcome"
+        value: ${{ jobs.container-signing.outputs.signing-outcome }}
+
+jobs:
+  container-signing:
+    name: Sign Container Image
+    runs-on: ubuntu-latest
+    outputs:
+      signing-outcome: ${{ steps.container-sign.outcome }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.aws_role }}
+        role-session-name: GitHubActions-Signing-${{ inputs.environment }}
+        aws-region: ${{ inputs.aws_region }}
+        
+    - name: Sign Container Image
+      id: container-sign
+      run: |
+        if [ -f "./.github/scripts/security-container-signer.sh" ]; then
+          chmod +x ./.github/scripts/security-container-signer.sh
+          
+          # Load centralized config
+          source ./.github/scripts/config.sh
+          
+          # Build image name
+          IMAGE_NAME="${ECR_REGISTRY}/devsecops-${{ inputs.environment }}-java-app:${{ inputs.image_tag }}"
+          
+          ./.github/scripts/security-container-signer.sh "$IMAGE_NAME" "$SIGNER_PROFILE_NAME" "${{ inputs.aws_region }}"
+        else
+          echo "⚠️ Container signing script not found, skipping..."
+          exit 1
+        fi
+      continue-on-error: true
+      
+    - name: Check Container Signing Results
+      run: |
+        if [ "${{ steps.container-sign.outcome }}" = "failure" ]; then
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "⚠️ CONTAINER SIGNING FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Container Signing Issues::Container signing failed in dev environment."
+          else
+            echo "🚨 CONTAINER SIGNING FAILED in ${{ inputs.environment }}"
+            exit 1
+          fi
+        else
+          echo "✅ Container signing passed successfully"
+        fi
+    
+    - name: Upload Signing Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: signing-reports
+        path: security/reports/notation-*.json
+        retention-days: 30
+        if-no-files-found: ignore

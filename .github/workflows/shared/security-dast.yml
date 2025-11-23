@@ -1,0 +1,86 @@
+name: DAST Security Scan (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      target_url:
+        required: true
+        type: string
+    secrets:
+      aws_role:
+        required: true
+    outputs:
+      dast-outcome:
+        description: "DAST scan outcome"
+        value: ${{ jobs.dast-scan.outputs.dast-outcome }}
+
+jobs:
+  dast-scan:
+    name: Dynamic Application Security Testing
+    runs-on: ubuntu-latest
+    outputs:
+      dast-outcome: ${{ steps.dast-scan.outcome }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.aws_role }}
+        role-session-name: GitHubActions-DAST-${{ inputs.environment }}
+        aws-region: ${{ inputs.aws_region }}
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Run DAST Security Scan
+      id: dast-scan
+      run: |
+        if [ -f "./.github/scripts/security-dast.sh" ]; then
+          chmod +x ./.github/scripts/security-dast.sh
+          
+          # Load centralized config
+          source ./.github/scripts/config.sh
+          
+          ./.github/scripts/security-dast.sh "${{ inputs.target_url }}"
+        else
+          echo "⚠️ DAST scanning script not found, skipping..."
+          exit 1
+        fi
+      continue-on-error: true
+      
+    - name: Check DAST Results
+      run: |
+        if [ "${{ steps.dast-scan.outcome }}" = "failure" ]; then
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "⚠️ DAST SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=DAST Security Issues::Dynamic security vulnerabilities detected in dev environment."
+          else
+            echo "🚨 DAST SCAN FAILED in ${{ inputs.environment }}"
+            exit 1
+          fi
+        else
+          echo "✅ DAST scan passed successfully"
+        fi
+    
+    - name: Upload DAST Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dast-reports-${{ inputs.environment }}
+        path: |
+          security/reports/zap-*.json
+          security/reports/zap-*.html
+          security/reports/dast-*.json
+        retention-days: 30
+        if-no-files-found: ignore

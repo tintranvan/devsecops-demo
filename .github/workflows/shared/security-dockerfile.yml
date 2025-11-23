@@ -1,0 +1,70 @@
+name: Security Dockerfile Scan
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_region:
+        required: false
+        type: string
+        default: us-east-1
+    outputs:
+      scan_outcome:
+        description: "Dockerfile scan outcome"
+        value: ${{ jobs.dockerfile-scan.outputs.outcome }}
+    secrets:
+      aws_role:
+        required: true
+
+jobs:
+  dockerfile-scan:
+    name: Dockerfile Security Scan
+    runs-on: ubuntu-latest
+    outputs:
+      outcome: ${{ steps.dockerfile-scan.outcome }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.aws_role }}
+        role-session-name: GitHubActions-Dockerfile-${{ inputs.environment }}
+        aws-region: ${{ inputs.aws_region }}
+        
+    - name: Setup Docker
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Run Dockerfile Scan
+      id: dockerfile-scan
+      run: |
+        chmod +x ./.github/scripts/security-inspector-dockerfile-container-validation.sh
+        ./.github/scripts/security-inspector-dockerfile-container-validation.sh none ${{ inputs.aws_region }}
+      continue-on-error: true
+      
+    - name: Check Results
+      run: |
+        if [ "${{ steps.dockerfile-scan.outcome }}" = "failure" ]; then
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "⚠️ DOCKERFILE SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Dockerfile Security Issues::Dockerfile security issues detected."
+          else
+            echo "🚨 DOCKERFILE SCAN FAILED in ${{ inputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ Dockerfile scan passed successfully"
+        fi
+    
+    - name: Upload Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dockerfile-reports
+        path: security/inspector/*.json
+        retention-days: 30
+        if-no-files-found: ignore

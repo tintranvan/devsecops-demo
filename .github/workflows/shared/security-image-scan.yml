@@ -1,0 +1,88 @@
+name: Image Security Scan (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_region:
+        required: true
+        type: string
+      image_tag:
+        required: true
+        type: string
+      service_name:
+        required: true
+        type: string
+    secrets:
+      aws_role:
+        required: true
+    outputs:
+      scan-outcome:
+        description: "Image scan outcome"
+        value: ${{ jobs.image-scan.outputs.scan-outcome }}
+
+jobs:
+  image-scan:
+    name: ECR Image Scanning
+    runs-on: ubuntu-latest
+    outputs:
+      scan-outcome: ${{ steps.image-scan.outcome }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.aws_role }}
+        role-session-name: GitHubActions-ImageScan-${{ inputs.environment }}
+        aws-region: ${{ inputs.aws_region }}
+        
+    - name: Run Image Security Scanning
+      id: image-scan
+      run: |
+        if [ -f "./.github/scripts/security-imagescaning.sh" ]; then
+          chmod +x ./.github/scripts/security-imagescaning.sh
+          
+          # Load centralized config
+          source ./.github/scripts/config.sh
+          
+          # Set environment variables
+          export ENVIRONMENT=${{ inputs.environment }}
+          export IMAGE_TAG=${{ inputs.image_tag }}
+          export SERVICE_NAME=${{ inputs.service_name }}
+          
+          ./.github/scripts/security-imagescaning.sh
+        else
+          echo "⚠️ Image scanning script not found, skipping..."
+          exit 1
+        fi
+      continue-on-error: true
+      
+    - name: Check Image Scan Results
+      run: |
+        if [ "${{ steps.image-scan.outcome }}" = "failure" ]; then
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "⚠️ IMAGE SCAN FAILED in DEV - Continuing with warnings"
+            echo "::warning title=Image Security Issues::Container image security vulnerabilities detected in dev environment."
+          else
+            echo "🚨 IMAGE SCAN FAILED in ${{ inputs.environment }}"
+            exit 1
+          fi
+        else
+          echo "✅ Image scan passed successfully"
+        fi
+    
+    - name: Upload Image Scan Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: image-scan-reports
+        path: |
+          security/ecr/*.json
+          security/ecr/*.md
+        retention-days: 30
+        if-no-files-found: ignore

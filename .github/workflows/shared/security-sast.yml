@@ -1,0 +1,67 @@
+name: Security SAST Scan
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      aws_region:
+        required: false
+        type: string
+        default: us-east-1
+    outputs:
+      scan_outcome:
+        description: "SAST scan outcome"
+        value: ${{ jobs.sast-scan.outputs.outcome }}
+    secrets:
+      aws_role:
+        required: true
+
+jobs:
+  sast-scan:
+    name: SAST/IaC/SCA/SBOM Scan
+    runs-on: ubuntu-latest
+    outputs:
+      outcome: ${{ steps.sast-scan.outcome }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.aws_role }}
+        role-session-name: GitHubActions-SAST-${{ inputs.environment }}
+        aws-region: ${{ inputs.aws_region }}
+        
+    - name: Run SAST Scan
+      id: sast-scan
+      run: |
+        chmod +x ./.github/scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh
+        ./.github/scripts/security-SAST-IaC-SCA-SBOM-PolicyasCode-check.sh "" ${{ inputs.aws_region }}
+      continue-on-error: true
+      
+    - name: Check Results
+      run: |
+        if [ "${{ steps.sast-scan.outcome }}" = "failure" ]; then
+          if [ "${{ inputs.environment }}" = "dev" ]; then
+            echo "⚠️ SAST FAILED in DEV - Continuing with warnings"
+            echo "::warning title=SAST Security Issues::Security vulnerabilities detected in dev environment."
+          else
+            echo "🚨 SAST FAILED in ${{ inputs.environment }} - Pipeline should stop"
+            exit 1
+          fi
+        else
+          echo "✅ SAST passed successfully"
+        fi
+    
+    - name: Upload Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: sast-reports
+        path: security/inspector/*.json
+        retention-days: 30
+        if-no-files-found: ignore
