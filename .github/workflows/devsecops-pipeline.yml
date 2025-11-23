@@ -111,7 +111,7 @@ jobs:
   sast-security-scan:
     name: SAST/IaC/SCA/SBOM Security Scan
     needs: setup
-    uses: ./.github/workflows/shared/security-sast.yml
+    uses: ./.github/workflows/security-sast.yml
     with:
       environment: ${{ needs.setup.outputs.environment }}
       aws_region: us-east-1
@@ -121,7 +121,7 @@ jobs:
   dockerfile-security-scan:
     name: Dockerfile Security Scan
     needs: setup
-    uses: ./.github/workflows/shared/security-dockerfile.yml
+    uses: ./.github/workflows/security-dockerfile.yml
     with:
       environment: ${{ needs.setup.outputs.environment }}
       aws_region: us-east-1
@@ -133,7 +133,6 @@ jobs:
     name: Build & Package
     runs-on: ubuntu-latest
     needs: [setup, sast-security-scan, dockerfile-security-scan]
-    #needs: [setup]
     if: always() && (needs.sast-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true') && (needs.dockerfile-security-scan.result == 'success' || needs.setup.outputs.continue_on_error == 'true')
     
     steps:
@@ -226,7 +225,7 @@ jobs:
     name: Image Security Scan
     needs: [setup, build]
     if: always() && needs.build.result == 'success'
-    uses: ./.github/workflows/shared/security-image-scan.yml
+    uses: ./.github/workflows/security-image-scan.yml
     with:
       environment: ${{ needs.setup.outputs.environment }}
       aws_region: us-east-1
@@ -239,7 +238,7 @@ jobs:
     name: Container Image Signing
     needs: [setup, build]
     if: always() && needs.build.result == 'success'
-    uses: ./.github/workflows/shared/security-container-signing.yml
+    uses: ./.github/workflows/security-container-signing.yml
     with:
       environment: ${{ needs.setup.outputs.environment }}
       aws_region: us-east-1
@@ -449,7 +448,7 @@ jobs:
     name: DAST Security Scan
     needs: [setup, deploy]
     if: always() && needs.deploy.result == 'success'
-    uses: ./.github/workflows/shared/security-dast.yml
+    uses: ./.github/workflows/security-dast.yml
     with:
       environment: ${{ needs.setup.outputs.environment }}
       aws_region: us-east-1
