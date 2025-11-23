@@ -638,6 +638,18 @@ jobs:
         else
           echo "✅ DAST scan passed successfully"
         fi
+    
+    - name: Upload DAST Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dast-reports-${{ needs.setup.outputs.environment }}
+        path: |
+          security/reports/zap-*.json
+          security/reports/zap-*.html
+          security/reports/dast-*.json
+        retention-days: 30
+        if-no-files-found: ignore
       
   # Security Summary
   security-summary:
@@ -661,29 +673,53 @@ jobs:
         # Create security directories
         mkdir -p security/reports security/ecr security/inspector
         
+        echo "📦 Downloaded artifacts:"
+        ls -la security-artifacts/ 2>/dev/null || echo "No artifacts downloaded"
+        
         # Copy artifacts to expected locations
         if [ -d "security-artifacts/sast-reports" ]; then
-          cp -r security-artifacts/sast-reports/* security/inspector/ 2>/dev/null || true
+          echo "✅ Copying SAST reports..."
+          cp -v security-artifacts/sast-reports/* security/inspector/ 2>/dev/null || echo "⚠️ No SAST files"
+        else
+          echo "⚠️ SAST reports not found"
         fi
         
         if [ -d "security-artifacts/dockerfile-reports" ]; then
-          cp -r security-artifacts/dockerfile-reports/* security/inspector/ 2>/dev/null || true
+          echo "✅ Copying Dockerfile reports..."
+          cp -v security-artifacts/dockerfile-reports/* security/inspector/ 2>/dev/null || echo "⚠️ No Dockerfile files"
+        else
+          echo "⚠️ Dockerfile reports not found"
         fi
         
         if [ -d "security-artifacts/image-scan-reports" ]; then
-          cp -r security-artifacts/image-scan-reports/* security/ecr/ 2>/dev/null || true
+          echo "✅ Copying Image scan reports..."
+          cp -v security-artifacts/image-scan-reports/* security/ecr/ 2>/dev/null || echo "⚠️ No Image scan files"
+        else
+          echo "⚠️ Image scan reports not found"
         fi
         
         if [ -d "security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}" ]; then
-          cp -r security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}/* security/reports/ 2>/dev/null || true
+          echo "✅ Copying DAST reports..."
+          cp -v security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}/* security/reports/ 2>/dev/null || echo "⚠️ No DAST files"
+        else
+          echo "⚠️ DAST reports not found"
         fi
         
         if [ -d "security-artifacts/signing-reports" ]; then
-          cp -r security-artifacts/signing-reports/* security/reports/ 2>/dev/null || true
+          echo "✅ Copying Signing reports..."
+          cp -v security-artifacts/signing-reports/* security/reports/ 2>/dev/null || echo "⚠️ No Signing files"
+        else
+          echo "⚠️ Signing reports not found"
         fi
         
-        echo "📁 Security files organized:"
-        find security -type f -name "*.json" | head -10
+        echo ""
+        echo "📁 Final security files:"
+        echo "Inspector files:"
+        ls -lh security/inspector/ 2>/dev/null || echo "  (empty)"
+        echo "ECR files:"
+        ls -lh security/ecr/ 2>/dev/null || echo "  (empty)"
+        echo "Reports files:"
+        ls -lh security/reports/*.json 2>/dev/null || echo "  (empty)"
     
     - name: Setup Python
       uses: actions/setup-python@v4
