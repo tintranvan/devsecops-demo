@@ -18,12 +18,21 @@ fi
 echo "🔍 AWS Inspector Code Security Analysis"
 echo "════════════════════════════════════════════════════════════"
 
+# Create output directory
+OUTPUT_DIR="security/inspector"
+mkdir -p "$OUTPUT_DIR"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
 # Get only ACTIVE CODE_VULNERABILITY findings
 FINDINGS=$(aws inspector2 list-findings \
     "${AWS_ARGS[@]}" \
     --region "$REGION" \
     --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
     --output json 2>/dev/null || echo '{"findings":[]}')
+
+# Save findings to file
+echo "$FINDINGS" > "$OUTPUT_DIR/sast_findings_${TIMESTAMP}.json"
+echo "📁 Findings saved to: $OUTPUT_DIR/sast_findings_${TIMESTAMP}.json"
 
 # Count by severity
 CRITICAL=$(echo "$FINDINGS" | jq '[.findings[] | select(.severity == "CRITICAL")] | length')

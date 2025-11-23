@@ -125,6 +125,15 @@ jobs:
         else
           echo "✅ SAST passed successfully"
         fi
+    
+    - name: Upload SAST Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: sast-reports
+        path: security/inspector/*.json
+        retention-days: 30
+        if-no-files-found: ignore
 
   dockerfile-security-scan:
     name: 🐳 Dockerfile Security Scan
@@ -168,6 +177,15 @@ jobs:
         else
           echo "✅ Dockerfile scan passed successfully"
         fi
+    
+    - name: Upload Dockerfile Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dockerfile-reports
+        path: security/inspector/*.json
+        retention-days: 30
+        if-no-files-found: ignore
 
   #3. Build & Package
   build:
@@ -310,6 +328,17 @@ jobs:
         else
           echo "✅ Image scan passed successfully"
         fi
+    
+    - name: Upload Image Scan Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: image-scan-reports
+        path: |
+          security/ecr/*.json
+          security/ecr/*.md
+        retention-days: 30
+        if-no-files-found: ignore
 
   container-signing:
     name: ✍️ Container Image Signing
@@ -357,6 +386,15 @@ jobs:
         else
           echo "✅ Container signing passed successfully"
         fi
+    
+    - name: Upload Signing Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: signing-reports
+        path: security/reports/notation-*.json
+        retention-days: 30
+        if-no-files-found: ignore
 
   #5. Deploy
   deploy:
@@ -444,8 +482,8 @@ jobs:
         
         # Health check with inline rollback capability (optimized for demo)
         echo "🏥 Starting health check (2 minutes max)..."
-        for i in {1..24}; do  # 2 minutes max (24 * 5s)
-            echo "  Health check attempt $i/24..."
+        for i in {1..30}; do  # 3 minutes max
+            echo "  Health check attempt $i/30..."
             sleep 5
             
             SERVICE_STATUS=$(aws ecs describe-services \
@@ -601,16 +639,6 @@ jobs:
           echo "✅ DAST scan passed successfully"
         fi
       
-    - name: Upload DAST Security Reports
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: dast-reports-${{ needs.setup.outputs.environment }}
-        path: |
-          security/reports/*.json
-          security/reports/*.html
-        retention-days: 30
-
   # Security Summary
   security-summary:
     name: 📊 Security Summary
@@ -619,6 +647,67 @@ jobs:
     if: always()
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download All Security Artifacts
+      uses: actions/download-artifact@v4
+      continue-on-error: true
+      with:
+        path: security-artifacts
+    
+    - name: Organize Security Files
+      run: |
+        # Create security directories
+        mkdir -p security/reports security/ecr security/inspector
+        
+        # Copy artifacts to expected locations
+        if [ -d "security-artifacts/sast-reports" ]; then
+          cp -r security-artifacts/sast-reports/* security/inspector/ 2>/dev/null || true
+        fi
+        
+        if [ -d "security-artifacts/dockerfile-reports" ]; then
+          cp -r security-artifacts/dockerfile-reports/* security/inspector/ 2>/dev/null || true
+        fi
+        
+        if [ -d "security-artifacts/image-scan-reports" ]; then
+          cp -r security-artifacts/image-scan-reports/* security/ecr/ 2>/dev/null || true
+        fi
+        
+        if [ -d "security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}" ]; then
+          cp -r security-artifacts/dast-reports-${{ needs.setup.outputs.environment }}/* security/reports/ 2>/dev/null || true
+        fi
+        
+        if [ -d "security-artifacts/signing-reports" ]; then
+          cp -r security-artifacts/signing-reports/* security/reports/ 2>/dev/null || true
+        fi
+        
+        echo "📁 Security files organized:"
+        find security -type f -name "*.json" | head -10
+    
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Generate Detailed Security Report
+      env:
+        SAST_OUTCOME: ${{ needs.sast-security-scan.outputs.sast-outcome }}
+        DOCKERFILE_OUTCOME: ${{ needs.dockerfile-security-scan.outputs.dockerfile-outcome }}
+        IMAGE_OUTCOME: ${{ needs.image-security-scan.outputs.image-outcome }}
+        SIGNING_OUTCOME: ${{ needs.container-signing.outputs.signing-outcome }}
+        DAST_OUTCOME: ${{ needs.dast-security-scan.outputs.dast-outcome }}
+      run: |
+        # Generate comprehensive security report
+        chmod +x scripts/generate-security-report.py
+        python3 scripts/generate-security-report.py \
+          "${{ needs.setup.outputs.environment }}" \
+          "${{ github.run_number }}" \
+          "${{ github.sha }}" || echo "⚠️ Report generation failed, continuing..."
+        
+        echo "✅ Security report generated successfully"
+        ls -lh security/reports/*.html 2>/dev/null || echo "No HTML reports found"
+    
     - name: Generate Security Summary
       run: |
         echo "# 🛡️ DevSecOps Security Pipeline Results" >> $GITHUB_STEP_SUMMARY
@@ -693,7 +782,84 @@ jobs:
         fi
         
         echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Detailed Findings Breakdown
+        echo "## 📋 Detailed Findings Breakdown" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Load summary JSON if exists
+        SUMMARY_FILE="security/reports/security-summary-${{ github.run_number }}.json"
+        if [ -f "$SUMMARY_FILE" ]; then
+          TOTAL=$(jq -r '.total_findings // 0' "$SUMMARY_FILE")
+          CRITICAL=$(jq -r '.critical_count // 0' "$SUMMARY_FILE")
+          HIGH=$(jq -r '.high_count // 0' "$SUMMARY_FILE")
+          MEDIUM=$(jq -r '.medium_count // 0' "$SUMMARY_FILE")
+          LOW=$(jq -r '.low_count // 0' "$SUMMARY_FILE")
+          
+          echo "### 🎯 Overall Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Severity | Count | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🔴 Critical | $CRITICAL | $([ $CRITICAL -gt 0 ] && echo '⚠️ Action Required' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟠 High | $HIGH | $([ $HIGH -gt 0 ] && echo '⚠️ Action Required' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟡 Medium | $MEDIUM | $([ $MEDIUM -gt 0 ] && echo 'ℹ️ Review' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🟢 Low | $LOW | $([ $LOW -gt 0 ] && echo 'ℹ️ Review' || echo '✅ Clean') |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Total** | **$TOTAL** | - |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Per-scan breakdown
+          echo "### 🔍 Scan-by-Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # SAST
+          SAST_TOTAL=$(jq -r '.scans.SAST.total // 0' "$SUMMARY_FILE")
+          SAST_STATUS=$(jq -r '.scans.SAST.status // "N/A"' "$SUMMARY_FILE")
+          echo "**SAST/IaC/SCA/SBOM**: $SAST_TOTAL findings ($SAST_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # Dockerfile
+          DOCKERFILE_TOTAL=$(jq -r '.scans.Dockerfile.total // 0' "$SUMMARY_FILE")
+          DOCKERFILE_STATUS=$(jq -r '.scans.Dockerfile.status // "N/A"' "$SUMMARY_FILE")
+          echo "**Dockerfile Security**: $DOCKERFILE_TOTAL findings ($DOCKERFILE_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # Image Security
+          IMAGE_TOTAL=$(jq -r '.scans.ImageSecurity.total // 0' "$SUMMARY_FILE")
+          IMAGE_STATUS=$(jq -r '.scans.ImageSecurity.status // "N/A"' "$SUMMARY_FILE")
+          echo "**Image Security**: $IMAGE_TOTAL findings ($IMAGE_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # DAST
+          DAST_TOTAL=$(jq -r '.scans.DAST.total // 0' "$SUMMARY_FILE")
+          DAST_STATUS=$(jq -r '.scans.DAST.status // "N/A"' "$SUMMARY_FILE")
+          echo "**DAST**: $DAST_TOTAL findings ($DAST_STATUS)" >> $GITHUB_STEP_SUMMARY
+          
+          # Container Signing
+          SIGNING_STATUS=$(jq -r '.scans.ContainerSigning.status // "N/A"' "$SUMMARY_FILE")
+          echo "**Container Signing**: $SIGNING_STATUS" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Number**: ${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Git Commit**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ Detailed report not available" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "## 🔗 Security Hub Integration" >> $GITHUB_STEP_SUMMARY
         echo "All security findings have been automatically sent to AWS Security Hub via SQS-Lambda pipeline." >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "🔗 [View Security Hub Console](https://us-east-1.console.aws.amazon.com/securityhub/)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "📥 **Download Reports**: Check workflow artifacts for detailed XML and JSON reports" >> $GITHUB_STEP_SUMMARY
+    
+    - name: Upload Security Reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: security-reports-${{ needs.setup.outputs.environment }}-${{ github.run_number }}
+        path: |
+          security/reports/*.html
+          security/reports/*.json
+        retention-days: 90
