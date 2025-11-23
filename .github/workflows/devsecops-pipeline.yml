@@ -4,7 +4,7 @@ on:
   # push:
   #   branches: [ main, develop, staging ]
   push:
-    branches: [ dev ]
+    branches: [ dev, refactor ]
   # pull_request:
   #   branches: [ main ]
   workflow_dispatch:
@@ -442,11 +442,11 @@ jobs:
         echo "  Service: $SERVICE_NAME_FULL"
         echo "  Previous Task Def: $PREVIOUS_TASK_DEF"
         
-        # Health check with inline rollback capability
-        echo "🏥 Starting health check (5 minutes max)..."
-        for i in {1..30}; do  # 5 minutes max (30 * 10s)
-            echo "  Health check attempt $i/30..."
-            sleep 10
+        # Health check with inline rollback capability (optimized for demo)
+        echo "🏥 Starting health check (2 minutes max)..."
+        for i in {1..24}; do  # 2 minutes max (24 * 5s)
+            echo "  Health check attempt $i/24..."
+            sleep 5
             
             SERVICE_STATUS=$(aws ecs describe-services \
                 --cluster $CLUSTER_NAME \
@@ -501,9 +501,9 @@ jobs:
                     echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
                     echo "⏳ Waiting for rollback to stabilize..."
                     
-                    # Wait for rollback to complete (max 3 minutes)
-                    for j in {1..18}; do
-                        sleep 10
+                    # Wait for rollback to complete (max 1 minute)
+                    for j in {1..12}; do
+                        sleep 5
                         ROLLBACK_STATUS=$(aws ecs describe-services \
                             --cluster $CLUSTER_NAME \
                             --services $SERVICE_NAME_FULL \

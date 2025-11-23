@@ -38,6 +38,23 @@ def get_health_check_path(service_config, environment):
     # Return environment-specific or base health check path, default to "/"
     return env_lb_config.get('health_check_path', base_lb_config.get('health_check_path', '/'))
 
+def get_deployment_config(service_config, environment):
+    """Get deployment configuration from service config"""
+    deployment = service_config.get('deployment', {})
+    
+    # Parse health_check_grace_period to seconds
+    grace_period = deployment.get('health_check_grace_period', '60s')
+    if isinstance(grace_period, str):
+        grace_period_seconds = int(grace_period.replace('s', ''))
+    else:
+        grace_period_seconds = grace_period
+    
+    return {
+        'minimum_healthy_percent': deployment.get('minimum_healthy_percent', 50),
+        'maximum_percent': deployment.get('maximum_percent', 200),
+        'health_check_grace_period': grace_period_seconds
+    }
+
 def generate_ecs_service_tf(service_config, environment, version=None):
     """Generate Terraform for ECS service using modules"""
     name = service_config['name']
@@ -52,6 +69,9 @@ def generate_ecs_service_tf(service_config, environment, version=None):
     cpu = env_resources.get('cpu', base_resources.get('cpu', 256))
     desired_count = env_resources.get('desired_count', base_resources.get('desired_count', 1))
     max_count = env_resources.get('max_count', base_resources.get('max_count', 10))
+    
+    # Get deployment configuration
+    deployment_config = get_deployment_config(service_config, environment)
     
     # Environment variables
     base_env_vars = service_config.get('environment_variables', {})
@@ -123,6 +143,11 @@ module "ecs_service" {{
   memory              = {memory}
   desired_count       = {desired_count}
   max_count          = {max_count}
+  
+  # Deployment Configuration (for fast deployment)
+  minimum_healthy_percent    = {deployment_config['minimum_healthy_percent']}
+  maximum_percent            = {deployment_config['maximum_percent']}
+  health_check_grace_period  = {deployment_config['health_check_grace_period']}
   
   # Load Balancer
   alb_listener_arn       = data.terraform_remote_state.core.outputs.alb_listener_arn
