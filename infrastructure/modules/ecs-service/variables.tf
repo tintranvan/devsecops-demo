@@ -73,6 +73,25 @@ variable "max_count" {
   default     = 10
 }
 
+# Deployment Configuration
+variable "minimum_healthy_percent" {
+  description = "Lower limit on the number of running tasks during deployment (0-100)"
+  type        = number
+  default     = 50
+}
+
+variable "maximum_percent" {
+  description = "Upper limit on the number of running tasks during deployment (100-200)"
+  type        = number
+  default     = 200
+}
+
+variable "health_check_grace_period" {
+  description = "Seconds to ignore failing load balancer health checks on newly instantiated tasks"
+  type        = number
+  default     = 60
+}
+
 # Load Balancer
 variable "alb_listener_arn" {
   description = "ALB listener ARN"
