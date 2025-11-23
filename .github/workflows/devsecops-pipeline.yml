@@ -24,6 +24,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "647272350116"
 
 jobs:
   # 1. Environment Setup
@@ -77,8 +78,8 @@ jobs:
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ needs.setup.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || needs.setup.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
-        role-session-name: GitHubActions-DevSecOps-${{ needs.setup.outputs.environment }}
+        role-to-assume: ${{ steps.vars.outputs.environment == 'prod' && secrets.AWS_ROLE_PROD || steps.vars.outputs.environment == 'staging' && secrets.AWS_ROLE_STG || secrets.AWS_ROLE_DEV }}
+        role-session-name: GitHubActions-DevSecOps-${{ steps.vars.outputs.environment }}
         aws-region: ${{ env.AWS_REGION }}
 
   # 2. Pre-Build Security Scans (Parallel)
@@ -202,17 +203,23 @@ jobs:
         echo "🔐 Getting CodeArtifact auth token..."
         CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
           --domain devsecops-domain \
-          --domain-owner 647272350116 \
-          --region us-east-1 \
+          --domain-owner ${{ env.AWS_ACCOUNT_ID }} \
+          --region ${{ env.AWS_REGION }} \
           --query authorizationToken \
-          --output text)
+          --output text) || {
+          echo "❌ Failed to get CodeArtifact token"
+          exit 1
+        }
+        
+        # Mask token in logs
+        echo "::add-mask::$CODEARTIFACT_AUTH_TOKEN"
         
         # Create temporary pip.conf
         echo "📝 Creating temporary pip.conf..."
         cd application
         cat > pip.conf << EOF
         [global]
-        index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-647272350116.d.codeartifact.us-east-1.amazonaws.com/pypi/python-packages/simple/
+        index-url = https://aws:${CODEARTIFACT_AUTH_TOKEN}@devsecops-domain-${{ env.AWS_ACCOUNT_ID }}.d.codeartifact.${{ env.AWS_REGION }}.amazonaws.com/pypi/python-packages/simple/
         EOF
         
     - name: Set up Docker Buildx
@@ -235,23 +242,19 @@ jobs:
         
     - name: Cleanup Build Files
       run: |
-        # Cleanup
+        # Cleanup pip.conf (contains sensitive token)
         rm -f application/pip.conf
-        
-        # Clear token from memory
-        unset CODEARTIFACT_AUTH_TOKEN
+        echo "✅ Cleaned up temporary build files"
         
     - name: Push to ECR
       run: |
-        # Configure ECR repository (use existing repo)
-        ACCOUNT_ID="647272350116"
-        REGION="us-east-1"
-        ECR_REPO="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
+        # Configure ECR repository
+        ECR_REPO="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app"
         VERSION="${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
         
         # Login to ECR
         echo "🔐 Logging into ECR..."
-        aws ecr get-login-password --region ${REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
+        aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         
         # Tag and push image
         docker tag ${{ needs.setup.outputs.service_name }}:${{ github.sha }} ${ECR_REPO}:${VERSION}
@@ -334,7 +337,7 @@ jobs:
         if [ -f "./scripts/security-container-signer.sh" ]; then
           chmod +x ./scripts/security-container-signer.sh
           # Script expects: ./script.sh [image_name] [profile_name] [region]
-          IMAGE_NAME="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
+          IMAGE_NAME="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/devsecops-${{ needs.setup.outputs.environment }}-java-app:${{ needs.setup.outputs.environment }}-${{ github.run_number }}"
           ./scripts/security-container-signer.sh "$IMAGE_NAME" "devsecops_image_demo_sign" "${{ env.AWS_REGION }}"
         else
           echo "⚠️ Container signing script not found, skipping..."
@@ -401,19 +404,28 @@ jobs:
             --query 'services[0].taskDefinition' \
             --output text 2>/dev/null || echo "")
         
+        # Export variables for rollback steps
+        echo "previous_task_def=$PREVIOUS_TASK_DEF" >> $GITHUB_OUTPUT
+        echo "cluster_name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+        echo "service_name_full=$SERVICE_NAME_FULL" >> $GITHUB_OUTPUT
         
-        # Continue with deployment...
-        # Image already pushed by build job, proceed with deployment
+        echo "📋 Rollback info saved:"
+        echo "  Previous Task Definition: $PREVIOUS_TASK_DEF"
+        echo "  Cluster: $CLUSTER_NAME"
+        echo "  Service: $SERVICE_NAME_FULL"
         
         # Deploy with Terraform
         echo "🏗️ Generating Terraform configuration..."
         python3 scripts/generate-service-infra.py application/service.yaml "$ENVIRONMENT" "$VERSION"
         
-        echo "🌍 Deploying infrastructure..."
+        echo "🌍 Deploying infrastructure with Terraform..."
         cd application/infrastructure
-        terraform init
+  
+        # Initialize Terraform with backend config
+        terraform init -reconfigure
+        # Plan and apply
         terraform plan -out=tfplan
-        terraform apply tfplan
+        terraform apply -auto-approve tfplan
         
         echo "✅ Deployment completed successfully"
         
@@ -421,10 +433,16 @@ jobs:
       id: healthcheck
       run: |
         echo "🏥 Starting health check..."
-        SERVICE_NAME_FULL="devsecops-${{ needs.setup.outputs.environment }}-${{ needs.setup.outputs.service_name }}"
-        CLUSTER_NAME="devsecops-${{ needs.setup.outputs.environment }}-cluster"
+        SERVICE_NAME_FULL="${{ steps.deploy.outputs.service_name_full }}"
+        CLUSTER_NAME="${{ steps.deploy.outputs.cluster_name }}"
+        PREVIOUS_TASK_DEF="${{ steps.deploy.outputs.previous_task_def }}"
         
-        # Health check with rollback
+        echo "📋 Health check configuration:"
+        echo "  Cluster: $CLUSTER_NAME"
+        echo "  Service: $SERVICE_NAME_FULL"
+        echo "  Previous Task Def: $PREVIOUS_TASK_DEF"
+        
+        # Health check with inline rollback capability
         echo "🏥 Starting health check (5 minutes max)..."
         for i in {1..30}; do  # 5 minutes max (30 * 10s)
             echo "  Health check attempt $i/30..."
@@ -444,7 +462,7 @@ jobs:
                 --query 'services[0].desiredCount' \
                 --output text)
 
-            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ]; then
+            if [ "$SERVICE_STATUS" -ge "$DESIRED_COUNT" ] && [ "$DESIRED_COUNT" -gt 0 ]; then
                 # Check deployment status
                 DEPLOYMENT_STATUS=$(aws ecs describe-services \
                     --cluster $CLUSTER_NAME \
@@ -457,7 +475,7 @@ jobs:
                     echo "✅ Health check passed ($SERVICE_STATUS/$DESIRED_COUNT tasks running)"
                     echo "✅ Deployment completed successfully"
                     echo "health_status=success" >> $GITHUB_OUTPUT
-                    break
+                    exit 0
                 else
                     echo "  Deployment status: $DEPLOYMENT_STATUS ($SERVICE_STATUS/$DESIRED_COUNT tasks)"
                 fi
@@ -465,12 +483,14 @@ jobs:
                 echo "  Status: $SERVICE_STATUS/$DESIRED_COUNT tasks running..."
             fi
             
-            # If this is the last attempt, prepare for rollback
+            # If this is the last attempt, trigger rollback
             if [ $i -eq 30 ]; then
                 echo "❌ Health check failed after 30 attempts"
+                echo "health_status=failed" >> $GITHUB_OUTPUT
                 
-                if [ ! -z "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
-                    echo "🔄 Rolling back to previous task definition..."
+                # Trigger rollback if previous task definition exists
+                if [ -n "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+                    echo "🔄 Initiating rollback to previous task definition..."
                     
                     aws ecs update-service \
                         --cluster $CLUSTER_NAME \
@@ -479,91 +499,60 @@ jobs:
                         --region ${{ env.AWS_REGION }} >/dev/null
                         
                     echo "✅ Rollback initiated to $PREVIOUS_TASK_DEF"
+                    echo "⏳ Waiting for rollback to stabilize..."
+                    
+                    # Wait for rollback to complete (max 3 minutes)
+                    for j in {1..18}; do
+                        sleep 10
+                        ROLLBACK_STATUS=$(aws ecs describe-services \
+                            --cluster $CLUSTER_NAME \
+                            --services $SERVICE_NAME_FULL \
+                            --region ${{ env.AWS_REGION }} \
+                            --query 'services[0].runningCount' \
+                            --output text)
+                        
+                        if [ "$ROLLBACK_STATUS" -ge "$DESIRED_COUNT" ]; then
+                            echo "✅ Rollback completed successfully"
+                            break
+                        fi
+                        echo "  Rollback progress: $ROLLBACK_STATUS/$DESIRED_COUNT tasks..."
+                    done
+                else
+                    echo "⚠️ No previous task definition available for rollback"
                 fi
                 
-                echo "health_status=failed" >> $GITHUB_OUTPUT
                 exit 1
             fi
         done
         
-        # Check service health
-        RUNNING_COUNT=$(aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} \
-          --query 'services[0].runningCount' \
-          --output text)
+    - name: Rollback on Deployment Failure
+      if: failure() && steps.deploy.outputs.previous_task_def != '' && steps.healthcheck.outcome == 'skipped'
+      run: |
+        echo "🔄 Deployment failed before health check, initiating rollback..."
         
-        DESIRED_COUNT=$(aws ecs describe-services \
-          --cluster $CLUSTER_NAME \
-          --services $SERVICE_NAME_FULL \
-          --region ${{ env.AWS_REGION }} \
-          --query 'services[0].desiredCount' \
-          --output text)
+        CLUSTER_NAME="${{ steps.deploy.outputs.cluster_name }}"
+        SERVICE_NAME_FULL="${{ steps.deploy.outputs.service_name_full }}"
+        PREVIOUS_TASK_DEF="${{ steps.deploy.outputs.previous_task_def }}"
         
-        echo "📊 Running: $RUNNING_COUNT, Desired: $DESIRED_COUNT"
-        
-        if [ "$RUNNING_COUNT" -eq "$DESIRED_COUNT" ] && [ "$RUNNING_COUNT" -gt 0 ]; then
-          echo "✅ Health check passed"
-          echo "health_status=success" >> $GITHUB_OUTPUT
+        if [ -n "$PREVIOUS_TASK_DEF" ] && [ "$PREVIOUS_TASK_DEF" != "None" ]; then
+          echo "🔄 Rolling back to: $PREVIOUS_TASK_DEF"
+          
+          aws ecs update-service \
+            --cluster $CLUSTER_NAME \
+            --service $SERVICE_NAME_FULL \
+            --task-definition $PREVIOUS_TASK_DEF \
+            --region ${{ env.AWS_REGION }}
+          
+          echo "⏳ Waiting for rollback to stabilize..."
+          aws ecs wait services-stable \
+            --cluster $CLUSTER_NAME \
+            --services $SERVICE_NAME_FULL \
+            --region ${{ env.AWS_REGION }} || echo "⚠️ Rollback wait timeout"
+          
+          echo "✅ Rollback completed"
         else
-          echo "❌ Health check failed"
-          echo "health_status=failed" >> $GITHUB_OUTPUT
-          exit 1
+          echo "⚠️ No previous task definition available for rollback"
         fi
-        
-    - name: Rollback on Health Check Failure
-      if: failure() && steps.deploy.outputs.previous_task_def != ''
-      run: |
-        echo "🔄 Health check failed, rolling back..."
-        aws ecs update-service \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --service ${{ steps.deploy.outputs.service_name_full }} \
-          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-          --region ${{ env.AWS_REGION }}
-        
-        # Wait for rollback to complete
-        aws ecs wait services-stable \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --services ${{ steps.deploy.outputs.service_name_full }} \
-          --region ${{ env.AWS_REGION }}
-        
-        echo "✅ Rollback completed"
-        
-    - name: Rollback on Failure
-      if: failure() && steps.deploy.outputs.previous_task_def != ''
-      run: |
-        echo "🔄 Rolling back to previous task definition..."
-        aws ecs update-service \
-          --cluster ${{ steps.deploy.outputs.cluster_name }} \
-          --service ${{ steps.deploy.outputs.service_name_full }} \
-          --task-definition ${{ steps.deploy.outputs.previous_task_def }} \
-          --region ${{ env.AWS_REGION }}
-        echo "✅ Rollback completed"
-        
-        # Set deployment variables
-        SERVICE_NAME="${{ needs.setup.outputs.service_name }}"
-        ENVIRONMENT="${{ needs.setup.outputs.environment }}"
-        VERSION="${ENVIRONMENT}-${{ github.run_number }}"
-        ECR_REPO="647272350116.dkr.ecr.us-east-1.amazonaws.com/devsecops-${ENVIRONMENT}-java-app"
-        
-        # Load Docker image from artifact
-        # Image already pushed by build job, proceed with deployment
-        
-        # Deploy with Terraform
-        echo "🏗️ Generating Terraform configuration..."
-        NEW_IMAGE_TAG="${ENVIRONMENT}-${{ github.run_number }}"
-        python3 scripts/generate-service-infra.py application/service.yaml ${ENVIRONMENT} ${NEW_IMAGE_TAG} || echo "⚠️ Terraform generator not found"
-        
-        echo "🌍 Deploying infrastructure..."
-        if [ -d "application/infrastructure" ]; then
-          cd application/infrastructure
-          terraform init -reconfigure
-          terraform apply -auto-approve
-        fi
-        
-        echo "✅ Deployment completed successfully!"
-        echo "📦 Image: ${ECR_REPO}:${ENVIRONMENT}-${{ github.run_number }}"
 
   # 6. Post-Deploy Security
   dast-security-scan:
