@@ -51,9 +51,6 @@ jobs:
         if [ -f "./.github/scripts/security-dast.sh" ]; then
           chmod +x ./.github/scripts/security-dast.sh
           
-          # Load centralized config
-          source ./.github/scripts/config.sh
-          
           ./.github/scripts/security-dast.sh "${{ inputs.target_url }}"
         else
           echo "⚠️ DAST scanning script not found, skipping..."

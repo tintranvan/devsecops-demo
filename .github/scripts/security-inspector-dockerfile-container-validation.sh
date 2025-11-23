@@ -10,10 +10,15 @@ REGION=${2:-us-east-1}
 OUTPUT_DIR="security/inspector"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-echo "🔍 AWS Inspector SBOM Generator (Docker)"
+# Get absolute paths for Docker volume mounts
+WORKSPACE_ROOT="$(pwd)"
+OUTPUT_DIR_ABS="${WORKSPACE_ROOT}/${OUTPUT_DIR}"
+APPLICATION_DIR_ABS="${WORKSPACE_ROOT}/application"
+
+echo "AWS Inspector SBOM Generator (Docker)"
 echo "========================================"
-echo "📋 Profile: $PROFILE"
-echo "🌍 Region: $REGION"
+echo "Profile: $PROFILE"
+echo "Region: $REGION"
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -54,10 +59,10 @@ echo "🏗️  Building inspector-sbomgen Docker image..."
 docker build -f /tmp/Dockerfile.inspector -t inspector-sbomgen:latest /tmp
 
 # Run Dockerfile scan
-echo "🔍 Running Dockerfile security scan..."
+echo "Running Dockerfile security scan..."
 docker run --rm \
-    -v "$PROJECT_ROOT/application:/workspace" \
-    -v "$OUTPUT_DIR:/output" \
+    -v "${APPLICATION_DIR_ABS}:/workspace" \
+    -v "${OUTPUT_DIR_ABS}:/output" \
     inspector-sbomgen:latest \
     directory \
     --path /workspace \
@@ -67,8 +72,8 @@ docker run --rm \
 echo "✅ SBOM generated successfully"
 
 # Fix file permissions after Docker run
-echo "🔧 Fixing file permissions..."
-sudo chown -R $(whoami):$(whoami) "$OUTPUT_DIR" 2>/dev/null || true
+echo "Fixing file permissions..."
+sudo chown -R $(whoami):$(whoami) "$OUTPUT_DIR_ABS" 2>/dev/null || true
 sudo chmod -R 644 "$OUTPUT_DIR"/*.json 2>/dev/null || true
 
 # Run vulnerability scan
@@ -78,8 +83,8 @@ echo "🛡️  Running vulnerability scan..."
 if [ "$PROFILE" = "none" ]; then
     # Use OIDC credentials from environment
     docker run --rm \
-        -v "$PROJECT_ROOT/application:/workspace" \
-        -v "$OUTPUT_DIR:/output" \
+        -v "${APPLICATION_DIR_ABS}:/workspace" \
+        -v "${OUTPUT_DIR_ABS}:/output" \
         -e AWS_REGION="$REGION" \
         -e AWS_ACCESS_KEY_ID \
         -e AWS_SECRET_ACCESS_KEY \
@@ -95,8 +100,8 @@ if [ "$PROFILE" = "none" ]; then
 else
     # Use profile-based credentials (local development only)
     docker run --rm \
-        -v "$PROJECT_ROOT/application:/workspace" \
-        -v "$OUTPUT_DIR:/output" \
+        -v "${APPLICATION_DIR_ABS}:/workspace" \
+        -v "${OUTPUT_DIR_ABS}:/output" \
         -e AWS_PROFILE="$PROFILE" \
         -e AWS_REGION="$REGION" \
         -v ~/.aws:/root/.aws:ro \

@@ -49,10 +49,10 @@ jobs:
         if [ -f "./.github/scripts/security-container-signer.sh" ]; then
           chmod +x ./.github/scripts/security-container-signer.sh
           
-          # Load centralized config
-          source ./.github/scripts/config.sh
-          
-          # Build image name
+          # Set variables for script
+          AWS_ACCOUNT_ID="${{ github.event.repository.owner.id }}"
+          ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com"
+          SIGNER_PROFILE_NAME="devsecops_image_demo_sign"
           IMAGE_NAME="${ECR_REGISTRY}/devsecops-${{ inputs.environment }}-java-app:${{ inputs.image_tag }}"
           
           ./.github/scripts/security-container-signer.sh "$IMAGE_NAME" "$SIGNER_PROFILE_NAME" "${{ inputs.aws_region }}"
