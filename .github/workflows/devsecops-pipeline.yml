@@ -847,9 +847,9 @@ jobs:
           echo "### 🔍 Scan-by-Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
-          # SAST
-          SAST_TOTAL=$(jq -r '.scans.SAST.total // 0' "$SUMMARY_FILE")
-          SAST_STATUS=$(jq -r '.scans.SAST.status // "N/A"' "$SUMMARY_FILE")
+          # SAST/IaC/SCA/SBOM
+          SAST_TOTAL=$(jq -r '.scans["SAST/IaC/SCA/SBOM"].total // 0' "$SUMMARY_FILE")
+          SAST_STATUS=$(jq -r '.scans["SAST/IaC/SCA/SBOM"].status // "N/A"' "$SUMMARY_FILE")
           echo "**SAST/IaC/SCA/SBOM**: $SAST_TOTAL findings ($SAST_STATUS)" >> $GITHUB_STEP_SUMMARY
           
           # Dockerfile

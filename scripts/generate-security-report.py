@@ -19,6 +19,11 @@ def load_json_safe(filepath):
         print(f"Warning: Could not load {filepath}: {e}")
     return None
 
+def sort_findings_by_severity(findings):
+    """Sort findings by severity: CRITICAL > HIGH > MEDIUM > LOW"""
+    severity_order = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'UNKNOWN': 4}
+    return sorted(findings, key=lambda x: severity_order.get(str(x.get('severity', 'UNKNOWN')).upper(), 4))
+
 def count_by_severity(findings, severity_field='severity'):
     """Count findings by severity"""
     counts = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0}
@@ -73,26 +78,27 @@ def generate_html_report(report_data):
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f5f5;
             padding: 20px;
             color: #333;
+            font-size: 14px;
         }}
         .container {{ 
             max-width: 1200px; 
             margin: 0 auto; 
             background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             overflow: hidden;
         }}
         .header {{
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #2c3e50;
             color: white;
-            padding: 40px;
+            padding: 30px;
             text-align: center;
         }}
-        .header h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
-        .header .subtitle {{ opacity: 0.9; font-size: 1.1em; }}
+        .header h1 {{ font-size: 1.8em; margin-bottom: 8px; }}
+        .header .subtitle {{ opacity: 0.9; font-size: 0.95em; }}
         
         .status-badge {{
             display: inline-block;
@@ -146,19 +152,18 @@ def generate_html_report(report_data):
             margin-bottom: 40px;
         }}
         .severity-card {{
-            padding: 25px;
-            border-radius: 12px;
+            padding: 15px;
+            border-radius: 6px;
             text-align: center;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
+            border: 2px solid #e9ecef;
+            background: white;
         }}
-        .severity-card:hover {{ transform: translateY(-5px); }}
-        .severity-card.critical {{ background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: white; }}
-        .severity-card.high {{ background: linear-gradient(135deg, #fd7e14 0%, #e8590c 100%); color: white; }}
-        .severity-card.medium {{ background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%); color: white; }}
-        .severity-card.low {{ background: linear-gradient(135deg, #28a745 0%, #218838 100%); color: white; }}
-        .severity-card .count {{ font-size: 3em; font-weight: bold; margin: 10px 0; }}
-        .severity-card .label {{ font-size: 1.1em; opacity: 0.9; }}
+        .severity-card.critical {{ border-color: #dc3545; }}
+        .severity-card.high {{ border-color: #fd7e14; }}
+        .severity-card.medium {{ border-color: #ffc107; }}
+        .severity-card.low {{ border-color: #28a745; }}
+        .severity-card .count {{ font-size: 2em; font-weight: bold; margin: 8px 0; color: #495057; }}
+        .severity-card .label {{ font-size: 0.9em; color: #6c757d; }}
         
         .scans {{
             padding: 0 40px 40px 40px;
@@ -231,9 +236,9 @@ def generate_html_report(report_data):
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛡️ DevSecOps Security Report</h1>
-            <p class="subtitle">Comprehensive Security Scan Results</p>
-            <div class="status-badge">{status_icon} {status_text}</div>
+            <h1>DevSecOps Security Report</h1>
+            <p class="subtitle">Build #{report_data['build_number']} - {report_data['environment'].upper()}</p>
+            <div class="status-badge">{status_text}</div>
         </div>
         
         <div class="metadata">
@@ -260,32 +265,32 @@ def generate_html_report(report_data):
         </div>
         
         <div class="summary">
-            <h2>📊 Overall Statistics</h2>
+            <h2>Overall Statistics</h2>
             <div class="severity-grid">
                 <div class="severity-card critical">
-                    <div class="label">🔴 Critical</div>
+                    <div class="label">Critical</div>
                     <div class="count">{report_data['critical_count']}</div>
                 </div>
                 <div class="severity-card high">
-                    <div class="label">🟠 High</div>
+                    <div class="label">High</div>
                     <div class="count">{report_data['high_count']}</div>
                 </div>
                 <div class="severity-card medium">
-                    <div class="label">🟡 Medium</div>
+                    <div class="label">Medium</div>
                     <div class="count">{report_data['medium_count']}</div>
                 </div>
                 <div class="severity-card low">
-                    <div class="label">🟢 Low</div>
+                    <div class="label">Low</div>
                     <div class="count">{report_data['low_count']}</div>
                 </div>
             </div>
-            <div style="text-align: center; font-size: 1.5em; color: #495057;">
+            <div style="text-align: center; font-size: 1.2em; color: #495057; margin-top: 15px;">
                 <strong>Total Findings: {report_data['total_findings']}</strong>
             </div>
         </div>
         
         <div class="scans">
-            <h2>🔍 Scan Results</h2>
+            <h2>Scan Results</h2>
 '''
     
     # Add scan cards
@@ -326,15 +331,23 @@ def generate_html_report(report_data):
         # Add findings details if available
         if scan_data.get('findings') and len(scan_data['findings']) > 0:
             html += '''
-                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e9ecef;">
-                    <h4 style="color: #495057; margin-bottom: 15px;">🔍 Top Findings:</h4>
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e9ecef;">
+                    <h4 style="color: #495057; margin-bottom: 12px; font-size: 1em;">Findings Details:</h4>
 '''
-            for idx, finding in enumerate(scan_data['findings'][:5], 1):
+            for idx, finding in enumerate(scan_data['findings'], 1):
                 title = finding.get('title', finding.get('Title', 'Unknown Issue'))
                 severity = finding.get('severity', finding.get('Severity', {}))
                 if isinstance(severity, dict):
                     severity = severity.get('Label', 'UNKNOWN')
-                description = finding.get('description', finding.get('Description', 'No description available'))[:200]
+                description = finding.get('description', finding.get('Description', 'No description available'))
+                
+                # Get file path and line info
+                file_path = finding.get('file_path', '')
+                line = finding.get('line', '')
+                
+                # Truncate description if too long
+                if len(description) > 300:
+                    description = description[:300] + '...'
                 
                 severity_colors = {
                     'CRITICAL': '#dc3545',
@@ -345,14 +358,14 @@ def generate_html_report(report_data):
                 severity_color = severity_colors.get(str(severity).upper(), '#6c757d')
                 
                 html += f'''
-                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid {severity_color};">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                            <strong style="color: #495057; font-size: 1.05em;">{idx}. {title}</strong>
-                            <span style="background: {severity_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.85em; font-weight: bold;">
+                    <div style="background: #f8f9fa; padding: 10px; border-radius: 4px; margin-bottom: 8px; border-left: 3px solid {severity_color};">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 6px;">
+                            <strong style="color: #495057; font-size: 0.9em;">{idx}. {title}</strong>
+                            <span style="background: {severity_color}; color: white; padding: 2px 8px; border-radius: 3px; font-size: 0.75em; font-weight: bold;">
                                 {severity}
                             </span>
                         </div>
-                        <p style="color: #6c757d; font-size: 0.95em; margin: 0;">{description}...</p>
+                        <p style="color: #6c757d; font-size: 0.85em; margin: 0; white-space: pre-line; line-height: 1.4;">{description}</p>
                     </div>
 '''
             
@@ -405,14 +418,77 @@ def main():
     }
     
     # SAST Scan (from AWS Inspector)
-    # Note: Use job outcomes from needs context
     sast_outcome = os.getenv('SAST_OUTCOME', 'unknown')
-    report_data['scans']['SAST'] = {
-        'status': 'PASSED' if sast_outcome == 'success' else 'FAILED' if sast_outcome == 'failure' else 'SKIPPED',
-        'total': 0,
-        'severity': {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0},
-        'findings': []
-    }
+    if os.path.exists('security/inspector'):
+        sast_files = [f for f in os.listdir('security/inspector') if 'sast_findings' in f and f.endswith('.json')]
+    else:
+        sast_files = []
+    
+    if sast_files:
+        latest_sast = sorted(sast_files)[-1]
+        sast_data = load_json_safe(f'security/inspector/{latest_sast}')
+        if sast_data and 'findings' in sast_data:
+            findings = sast_data['findings']
+            # AWS Inspector format: findings array with severity field
+            severity_counts = count_by_severity(findings, 'severity')
+            
+            # Transform findings to common format
+            transformed_findings = []
+            for finding in findings:  # All findings
+                # Extract file path and line info from codeVulnerabilityDetails
+                code_details = finding.get('codeVulnerabilityDetails', {})
+                file_path_info = code_details.get('filePath', {})
+                file_path = file_path_info.get('filePath', 'Unknown')
+                start_line = file_path_info.get('startLine', '')
+                end_line = file_path_info.get('endLine', '')
+                
+                # Build location string
+                location = f"{file_path}"
+                if start_line:
+                    location += f" (Line {start_line}"
+                    if end_line and end_line != start_line:
+                        location += f"-{end_line}"
+                    location += ")"
+                
+                description = finding.get('description', 'No description')
+                # Add location to description
+                full_description = f"{description}\n📁 Location: {location}"
+                
+                transformed_findings.append({
+                    'title': finding.get('title', 'Unknown'),
+                    'severity': finding.get('severity', 'UNKNOWN'),
+                    'description': full_description,
+                    'file_path': file_path,
+                    'line': f"{start_line}-{end_line}" if start_line else 'N/A'
+                })
+            
+            # Sort by severity
+            transformed_findings = sort_findings_by_severity(transformed_findings)
+            
+            report_data['scans']['SAST/IaC/SCA/SBOM'] = {
+                'status': 'COMPLETED',
+                'total': len(findings),
+                'severity': severity_counts,
+                'findings': transformed_findings
+            }
+            report_data['total_findings'] += len(findings)
+            for sev, count in severity_counts.items():
+                if sev.lower() in ['critical', 'high', 'medium', 'low']:
+                    report_data[f'{sev.lower()}_count'] += count
+        else:
+            report_data['scans']['SAST/IaC/SCA/SBOM'] = {
+                'status': 'PASSED' if sast_outcome == 'success' else 'FAILED' if sast_outcome == 'failure' else 'SKIPPED',
+                'total': 0,
+                'severity': {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0},
+                'findings': []
+            }
+    else:
+        report_data['scans']['SAST/IaC/SCA/SBOM'] = {
+            'status': 'PASSED' if sast_outcome == 'success' else 'FAILED' if sast_outcome == 'failure' else 'SKIPPED',
+            'total': 0,
+            'severity': {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0},
+            'findings': []
+        }
     
     # Dockerfile Scan
     dockerfile_outcome = os.getenv('DOCKERFILE_OUTCOME', 'unknown')
@@ -485,12 +561,14 @@ def main():
         latest_dast = sorted(dast_files)[-1]
         dast_data = load_json_safe(f'security/reports/{latest_dast}')
         if dast_data and isinstance(dast_data, list):
+            # Sort DAST findings by severity
+            dast_data_sorted = sort_findings_by_severity(dast_data)
             severity_counts = count_by_severity(dast_data, 'Severity')
             report_data['scans']['DAST'] = {
                 'status': 'COMPLETED',
                 'total': len(dast_data),
                 'severity': severity_counts,
-                'findings': dast_data[:5]
+                'findings': dast_data_sorted
             }
             report_data['total_findings'] += len(dast_data)
             for sev, count in severity_counts.items():
