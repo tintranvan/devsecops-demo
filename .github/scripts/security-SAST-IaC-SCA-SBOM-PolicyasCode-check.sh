@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Check ACTIVE Security Findings for project
-# Usage: ./check-findings.sh [profile] [region]
-
 # Load configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/config.sh"
@@ -28,11 +25,24 @@ mkdir -p "$OUTPUT_DIR"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Get only ACTIVE CODE_VULNERABILITY findings
+echo "🔍 Querying AWS Inspector for findings..."
+echo "   Region: $REGION"
+echo "   Profile: ${PROFILE:-none}"
+echo "   AWS Args: ${AWS_ARGS[@]:-none}"
+
+# Capture both stdout and stderr
 FINDINGS=$(aws inspector2 list-findings \
     "${AWS_ARGS[@]}" \
     --region "$REGION" \
     --filter-criteria '{"findingStatus":[{"value":"ACTIVE","comparison":"EQUALS"}],"findingType":[{"value":"CODE_VULNERABILITY","comparison":"EQUALS"}]}' \
-    --output json 2>/dev/null || echo '{"findings":[]}')
+    --output json 2>&1)
+
+# Check if command succeeded
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to query Inspector:"
+    echo "$FINDINGS"
+    FINDINGS='{"findings":[]}'
+fi
 
 # Save findings to file
 echo "$FINDINGS" > "$OUTPUT_DIR/sast_findings_${TIMESTAMP}.json"
